@@ -5,7 +5,13 @@
       "Bash(git commit -m 'Phase B documentation: update to reflect completion with all items 1-6 resolved *)",
       "Bash(node -e \"try { require\\('node:sqlite'\\); console.log\\('node:sqlite available \\(CJS\\)'\\); } catch\\(e\\) { console.log\\('CJS fail:', e.message\\); }\")",
       "Bash(node -e \"import\\('node:sqlite'\\).then\\(\\(\\)=>console.log\\('node:sqlite available \\(ESM\\)'\\)\\).catch\\(e=>console.log\\('ESM fail:', e.message\\)\\)\")",
-      "Bash(node -e ' *)"
+      "Bash(node -e ' *)",
+      "Bash(node --import tsx manual-check2.mjs)",
+      "Bash(rm -f \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check.mjs\" \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check2.mjs\" /tmp/scopewatch-manual-check*.db*)",
+      "Bash(node --import tsx --test packages/state/test/lifecycle.test.ts)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

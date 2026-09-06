@@ -5,6 +5,7 @@ export type LifecycleState =
   | 'configured'
   | 'validated'
   | 'active'
+  | 'updated'
   | 'disabled'
   | 'removed';
 

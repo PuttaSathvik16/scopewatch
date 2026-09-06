@@ -13,7 +13,14 @@ import {
 
 export type SpawnFn = (command: string, args: string[], env: NodeJS.ProcessEnv) => ChildProcess;
 
-const defaultSpawn: SpawnFn = (command, args, env) => spawn(command, args, { env, stdio: ['pipe', 'pipe', 'pipe'] });
+// command is frequently 'npx', which ships as a .cmd file on Windows - Node's
+// automatic bare-command PATH resolution only finds real executables
+// (.exe/.com) without shell: true, so this would ENOENT on every real
+// Windows machine otherwise. See apps/cli/src/real-runners.ts for the full
+// account of how this class of bug was found and why shell: true is safe on
+// this project's Node floor (22.0.0, well past CVE-2024-27980).
+const defaultSpawn: SpawnFn = (command, args, env) =>
+  spawn(command, args, { env, stdio: ['pipe', 'pipe', 'pipe'], shell: process.platform === 'win32' });
 
 export type McpToolResult = {
   name: string;

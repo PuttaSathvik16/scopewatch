@@ -446,38 +446,6 @@ test(
     };
 
     try {
-      // TEMPORARY diagnostic: cmdDoctor masks the real underlying spawn
-      // error into a generic "npm is not installed" message regardless of
-      // cause, which has made two real CI iterations blind. Call the shim
-      // directly (both by bare name through PATH, and by absolute path) and
-      // print the raw error so the actual cause is visible in CI output.
-      if (IS_WINDOWS) {
-        try {
-          const r1 = await execFileAsync('npm', ['--version'], { env: baseEnv, encoding: 'utf-8' });
-          console.error('[DIAG] bare "npm" via PATH succeeded:', JSON.stringify(r1));
-        } catch (e: any) {
-          console.error('[DIAG] bare "npm" via PATH failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
-        }
-        try {
-          const r2 = await execFileAsync(join(shimDir, 'npm.cmd'), ['--version'], { env: baseEnv, encoding: 'utf-8' });
-          console.error('[DIAG] absolute npm.cmd succeeded:', JSON.stringify(r2));
-        } catch (e: any) {
-          console.error('[DIAG] absolute npm.cmd failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
-        }
-        // Critical check: does the REAL system npm (the one actions/setup-node
-        // just installed, no custom shim/PATH override at all) resolve via
-        // plain execFileAsync the exact same way @scopewatch/install-adapters'
-        // defaultRunner calls it? If this ALSO fails, it means Scopewatch's
-        // own product code has never actually worked against a real Windows
-        // npm install - a real product bug, not a test-harness issue.
-        try {
-          const r3 = await execFileAsync('npm', ['--version'], { encoding: 'utf-8' });
-          console.error('[DIAG] REAL system npm (no custom PATH) succeeded:', JSON.stringify(r3));
-        } catch (e: any) {
-          console.error('[DIAG] REAL system npm (no custom PATH) failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
-        }
-      }
-
       const doctorResult = await runCli(['doctor'], baseEnv);
       strictEqual(doctorResult.code, 0, `doctor should succeed via the real binary. stderr: ${doctorResult.stderr}`);
       ok(doctorResult.stdout.includes('22.5.0'), `Expected the real (shimmed) version in doctor's real output. Got: "${doctorResult.stdout}"`);

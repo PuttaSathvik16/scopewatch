@@ -11,7 +11,7 @@
   "scripts": {
     "test": "node --import tsx --test 'packages/**/test/**/*.test.ts'",
     "test:e2e": "node --import tsx --test 'e2e/**/*.test.ts'",
-    "build": "tsc --build",
+    "build": "tsc --build && npm run copy-schema --workspace=@scopewatch/state",
     "clean": "tsc --build --clean",
     "lint": "eslint .",
     "prepare": "npm run build"

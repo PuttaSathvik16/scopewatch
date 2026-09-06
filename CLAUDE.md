@@ -339,5 +339,115 @@ passing against the real npm registry.
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase E ✅ complete; Phase D — Secrets — next)  
-**Commits:** 7 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter)
+## Phase D: Secrets ✅ (2026-09-06)
+
+### Keychain approach: shell out to native OS CLIs, not a native Node addon
+Given the `better-sqlite3` ABI pain from Phase C (prebuilt binary required
+Node >=22, segfaulted on this machine's Node 21.7.1), native Node addons for
+keychain access (`keytar`, `@napi-rs/keyring`) were rejected in favor of
+shelling out directly to each OS's own credential tooling. This still
+satisfies "native credential APIs only" - it's literally the OS's own
+tooling, just invoked as a subprocess instead of linked as a native addon,
+with zero prebuilt-binary/ABI risk.
+
+| OS | Mechanism |
+|---|---|
+| macOS | `/usr/bin/security` (ships with macOS) |
+| Linux | `secret-tool` (from `libsecret-tools`, Secret Service API over D-Bus) |
+| Windows | `powershell.exe` + inline C# `Add-Type` P/Invoke of `CredWrite`/`CredRead`/`CredDelete` (Advapi32.dll) - **unverified on real Windows**, this dev environment is macOS; implemented strictly per documented Win32 API contracts, must be validated on real Windows before production use |
+
+### Critical fix found by testing, not assumed: `security`'s `-w` flag exposes the value in argv
+Initial design assumed `security add-generic-password -w <value>` was
+parallel to `secret-tool store`'s stdin-based input. It is not: verified
+directly against `security add-generic-password -h` on this dev machine -
+`-w <value>` puts the value in the subprocess's command-line arguments,
+visible to any process with `ps`/Activity Monitor access for the life of
+the subprocess. `-w` with **no value, as the truly-last token** instead
+makes `security` read the password from stdin as a confirm+retype pair
+(`value\nvalue\n`) - confirmed empirically via a disposable test keychain
+and a live login-keychain round-trip (both cleaned up immediately after).
+The Windows PowerShell script was designed the same way from the start
+(`[Console]::In.ReadToEnd()`, never string-interpolated into `-Command`),
+once the macOS finding made clear this class of leak applies wherever a
+"pass the secret as a command-line flag" shortcut is tempting.
+
+### No-keychain-backend fallback: fail loudly, no custom crypto
+Headless/CI Linux with no D-Bus Secret Service running is a real, common
+gap. The locked stack rule ("no custom crypto, no plaintext anywhere") rules
+out any encrypted-file fallback - such a fallback needs its own encryption
+key stored *somewhere*, recreating the exact problem it claims to solve.
+When no backend is detected (`secret-tool` missing, or present but
+unable to reach a Secret Service), storage fails with a categorized,
+actionable `no_keychain_backend` error. Scopewatch is simply not usable for
+secret-requiring servers on such a machine until a keychain is provisioned -
+the correct tradeoff, not a limitation to engineer around.
+
+### Opaque references, never values, in state
+`secretRef(server_id, secret_id)` (e.g. `"@mcp/server-github:GITHUB_TOKEN"`)
+is the single code path allowed to construct a keychain account reference -
+store/retrieve/delete all go through it, so store-time and lookup-time keys
+can never drift apart. Only the secret's `id` (a label, e.g.
+`"GITHUB_TOKEN"`) is ever recorded in a manifest or the SQLite state from
+Phase C - never a value. A secret value exists in memory only: briefly after
+the terminal prompt reads it, for the duration of the keychain `store()`
+subprocess call, and for the duration of `retrieve()` immediately before
+being placed into the `env` object passed to `child_process.spawn()` at
+activation.
+
+### Redaction-first logging (built fresh, nothing to retrofit)
+No logging module existed anywhere before Phase D. Built
+`createLogger()`/`redact()` with redaction as a first-class feature:
+content-based (any registered live secret VALUE gets replaced wherever it
+appears, including embedded in unrelated error text), not key-name-based.
+`retrieveSecret()` registers a retrieved value for redaction inside a
+`finally` block wrapping the platform-specific read - guaranteed even if
+something else throws immediately after a successful retrieval. Verified
+with a real test (`keychain-dispatch.test.ts`) that a later secret in a
+batch failing does not un-protect an earlier secret that already succeeded.
+
+### Secure prompt
+`promptSecret()` uses `readline` with output muted during input (no
+terminal echo) and requires a real TTY on stdin by default - refuses rather
+than silently reading from a piped/redirected source, which could otherwise
+bypass the "never printed/logged" guarantee. Accepts injectable
+input/output streams for testing (same DI pattern as Phase E's
+`CommandRunner`).
+
+### Exit check: automated, not manual - and proven meaningful
+Built `exit-check-zero-plaintext.test.ts`: stores one real secret value via
+the real macOS keychain, runs it through a simulated install -> configure ->
+activate flow touching every artifact type the brief calls out (a generated
+client config file, the real SQLite lockfile/state from `@scopewatch/state`
+scanned as raw bytes - not just the columns expected to matter - and log
+output through the redacting logger), then greps every artifact plus every
+file in the run's working directory for the raw value. Confirmed the test
+is not a tautology by deliberately disabling redaction and re-running: it
+correctly failed with `"PLAINTEXT SECRET LEAK in log output"`, then passed
+again once redaction was restored.
+
+### Real bug found and fixed during implementation: `@scopewatch/state`'s schema files were never copied to `dist/`
+`db.ts` resolves its migrations directory relative to its own
+`import.meta.url`. Every Phase C test ran against `.ts` source directly via
+`tsx`, where that correctly points at `src/schema`. The exit-check test
+above was the first thing in this codebase to consume `@scopewatch/state` as
+a real *compiled* dependency (`import { openDatabase } from
+'@scopewatch/state'`, resolving to `dist/index.js`) - which immediately
+failed with `ENOENT: .../packages/state/dist/schema`, because nothing had
+ever copied the `.sql` migration files into `dist/`. Root cause: the
+top-level `prepare` hook runs `tsc --build` directly, which compiles `.ts`
+files but has no notion of copying non-TypeScript assets - the same shape of
+"invisible until actually consumed externally" bug as the build-hygiene fix
+earlier in Phase C. Fixed by adding a `copy-schema` step to both
+`packages/state`'s own `build` script and the root `build` script
+(`tsc --build && npm run copy-schema --workspace=@scopewatch/state`),
+verified by deleting all `dist/` and `.tsbuildinfo` files and confirming a
+clean `npm install` produces `dist/schema/*.sql`.
+
+Full suite: 96/96 passing (59 Phase A/B/C/E + 37 Phase D), verified offline
+(broken-proxy check) and against a real, cleaned-up-afterward macOS
+keychain. Windows path implemented but unverified on real hardware.
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅ complete)  
+**Commits:** 9 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets)

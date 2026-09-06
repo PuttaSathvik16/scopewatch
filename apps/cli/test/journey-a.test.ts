@@ -192,7 +192,7 @@ test('Journey A end-to-end: search -> info -> install -> test -> activate -> upd
       strictEqual(updatedEntry.state, 'updated', 'update must show the diff and STOP at updated - never auto-activate');
 
       // --- Step 8: diff (retrieve and re-render the stored diff) ---
-      const diffResult = cmds.cmdDiff(updateResult.diffId, { db });
+      const diffResult = cmds.cmdDiff(SERVER_NAME, CLAUDE_CODE_CLIENT_ID, { db });
       ok(diffResult.ok);
       if (diffResult.ok) {
         ok(diffResult.rendered.toLowerCase().includes('delete_record'));

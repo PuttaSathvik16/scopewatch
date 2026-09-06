@@ -973,5 +973,113 @@ re-confirmed meaningful via the established delete-dist technique.
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅ complete)  
-**Commits:** 19 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler)
+## Phase I, part 2: Diagnostics Taxonomy, Docs, and a Mechanical Command-Wiring Audit
+
+### Failure taxonomy and sanitized log capture
+
+Split `protocol_error` into `initialize_rejected` (server rejects the
+handshake itself) and `tools_list_failed` (handshake succeeds, `tools/list`
+itself fails - often missing runtime config), keeping `protocol_error` as
+the fallback. Folded a real gap into `malformed_response`'s existing
+definition rather than adding a fifth category: it previously only fired on
+a JSON parse failure - a syntactically valid JSON-RPC success response with
+a wrong-shaped result (`result.tools` not an array) fell through completely
+uncaught (`msg.result.tools ?? []` silently resolved `ok: true` with an
+empty list). Added `isValidToolsListResult()`.
+
+**Sanitized log capture found to be entirely absent, not just unwired**:
+there was no stderr capture at all before this pass - `stdio` was piped but
+nothing ever read it, so a failing server's diagnostic output was silently
+discarded. Added real capture, passed through `@scopewatch/secrets`'
+`redact()` (Phase D) - the same mechanism used everywhere else, not a
+second one - before being attached to any error. Mutation-tested:
+temporarily skipped the `redact()` call and confirmed the exact secret-leak
+reproduces with a specific assertion; restored and confirmed green.
+
+Retry/backoff decided explicitly out of scope for v1: a connection test
+reports current, actual status - a retry loop would blur "broken right
+now" into "eventually reachable," a weaker signal for a trust tool.
+
+### Documentation set
+
+`docs/quickstart.md`, `docs/security-model.md`, `docs/supported-matrix.md`
+(absorbs and updates the prior `activation-scope.md`, correcting its
+now-stale "drift not yet built" claim), and `docs/capability-inference-limits.md`
+- pulled directly from `infer.ts`'s own doc comment, including a dedicated
+"diff engine tiering scope" section (the four tiers, the locked
+Tier-1-only `newly_destructive` gate).
+
+### A mechanical command-wiring audit, motivated by a recognized pattern
+
+The formal Section 19 pass had already found two real gaps in one sitting
+(`cmdRollback` untested, `deactivate` unwired) - both the same failure
+shape: correct, tested logic sitting behind a command surface that either
+had no direct test or wasn't registered at all. Rather than assume those
+were the only two, ran an exhaustive, mechanical audit: enumerate every
+`cmd*` function `commands.ts` exports, diff against every command `main.ts`
+actually registers, and confirm every registered command has at least one
+test invoking the real `cmdX` function (not just the module it delegates
+to).
+
+**This found a materially more serious version of the same bug**: `update`,
+`update --check`, and `diff <server>` were **entirely unregistered in
+`main.ts`** - not undertested, genuinely unreachable. `cmdUpdateCheck`,
+`cmdUpdate`, `cmdApproveUpdate`, and `cmdDiff` all existed, were all
+individually correct, and were all exercised by `journey-a.test.ts` - but
+only because that test calls them directly, bypassing `main.ts` entirely.
+A real user running the compiled `scopewatch` binary and typing `scopewatch
+update myserver` would have hit commander's "unknown command" error. This
+is Journey A's climax and the product's central promise (Section 1: "the
+demo, the README hero image, the reason to launch") - the single most
+important command surface in the whole CLI had zero real entry point.
+
+Also found in the same pass: `cmdDiff`'s signature took a raw numeric diff
+ID, not a server name - not matching the brief's actual CLI surface
+(`scopewatch diff <server>`), and not something any real CLI user would
+ever type correctly. Fixed to resolve the last diff via
+`lockfile_entries.last_diff_id` for the given `(server_id, client_id)`
+pair, matching the real intended command shape.
+
+Also found: `cmdDoctor` had zero direct test coverage anywhere (the
+underlying `checkPrerequisites()` was well-tested, but the command wrapper
+itself was not) - the same "tested module, untested command wrapper" shape
+one level down.
+
+**Fixed all of it**: wired `diff <server>` and `update [server] [--check]`
+(with a real interactive approve/decline prompt before activation - never
+auto-activating, per the brief's core rule) into `main.ts`; added direct
+tests for `cmdDoctor`. Re-ran the audit after fixing: all 15 `commands.ts`
+exports now have exactly matching `main.ts` registrations, and every
+registered command has at least one test invoking its real `cmdX`
+function - confirmed by rerunning the same enumeration/diff, not assumed
+fixed.
+
+Full suite: 183/183 passing (181 prior + 2 new `cmdDoctor` tests - the
+`update`/`diff` wiring itself was proven via the existing, now-connected
+`journey-a.test.ts` coverage plus a real compiled-binary `--help` smoke
+check confirming all 13 commands are genuinely reachable). Verified
+offline, from a clean rebuild, real macOS keychain confirmed clean.
+
+### Formal Section 19 acceptance pass - final result
+
+| # | Criterion | Status |
+|---|---|---|
+| 1 | Prerequisites + activate one server, documented steps alone | ✅ `journey-a.test.ts` + `docs/quickstart.md` |
+| 2 | Same manifest, both clients, no duplicated credentials | ✅ Phase F `golden-path-both-clients.test.ts` |
+| 3 | Diff engine produces a correct diff before activation | ✅ `journey-a.test.ts` update step + Phase B's 25-fixture matrix |
+| 4 | Secrets absent from config/lockfile/logs/diagnostic export | ✅ Phase D exit-check + Phase I stderr-redaction tests |
+| 5 | Connection test: success or categorized, actionable failure | ✅ `mcp-client.test.ts`, 6 categories + success |
+| 6 | Updates version-pinned, diff shown, rollback works | ✅ `journey-a.test.ts` + `cmd-rollback.test.ts` (gap closed this pass) |
+| 7 | Deactivate never silently removes unrelated config | ✅ Phase F `activate.test.ts` + `cmd-deactivate.test.ts` (gap closed this pass) |
+| 8 | CI runs the full suite incl. per-client golden path | ⚠️ Workflow correctly designed (`.github/workflows/ci.yml`), **never executed** - no GitHub remote/auth in this environment. Structural, not a code gap: clears the moment it's pushed and runs, `windows-latest` job included. |
+| 9 | Docs: quickstart, security model, matrix, diff-engine limits | ✅ All four `docs/` files |
+
+**8 of 9 demonstrated with real, verified evidence. The 9th is blocked only
+on infrastructure outside this environment's control**, not on anything
+further code can fix - noted for whoever pushes this repository to a real
+GitHub remote.
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅, Phase I ✅ complete - MVP acceptance: 8/9, 9th blocked on external infra)  
+**Commits:** 21 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler + Phase I diagnostics/docs + Phase I command-wiring audit)

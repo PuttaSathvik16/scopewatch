@@ -288,9 +288,21 @@ documentation) or a native ConPTY addon this project deliberately doesn't
 add (the same ABI-risk reasoning that ruled out native keychain addons).
 The secret-free form of the same journey — install through diff, the exact
 path that once let the whole `update`/`diff`/`approve` command surface ship
-unreachable — runs and passes on Windows too. The precise, remaining gap is
-narrow: only the interactive secret-prompt path during `install` lacks real
-Windows subprocess coverage, not the journey as a whole. Full reasoning in
+unreachable — runs and genuinely passes on real Windows CI. The precise,
+remaining gap is narrow: only the interactive secret-prompt path during
+`install` lacks real Windows subprocess coverage, not the journey as a
+whole.
+
+Chasing that Windows gap down to its real cause also surfaced a genuine
+product bug, not just a test limitation: `npm`/`npx` ship as `.cmd` files
+on Windows, and Node's automatic PATH resolution for a bare command
+(`spawn`/`execFile` without `shell: true`) only finds real executables —
+`.cmd`/`.bat` targets are excluded by design. This meant `scopewatch
+doctor` and `scopewatch install`, and the actual runtime wrapper a real
+client spawns to launch an MCP server, had never worked on any real
+Windows machine — undetected because every prior test injected a fake
+process runner. Fixed at all four real spawn sites once found via an
+exhaustive audit, verified against real Windows CI. Full account in
 [CLAUDE.md](CLAUDE.md).
 
 ## Security model, in short

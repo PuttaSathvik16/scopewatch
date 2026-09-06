@@ -24,6 +24,7 @@
     { "path": "packages/state" },
     { "path": "packages/install-adapters" },
     { "path": "packages/secrets" },
-    { "path": "packages/client-adapters" }
+    { "path": "packages/client-adapters" },
+    { "path": "packages/capability-inference" }
   ]
 }

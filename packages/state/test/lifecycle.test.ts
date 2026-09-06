@@ -43,18 +43,19 @@ test('Migration runs clean against a fresh database file', () => {
   const migrations = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as { version: number }[];
   strictEqual(
     migrations.length,
-    3,
-    'all three migrations applied (001 initial schema, 002 adds updated state, 003 client config ownership)'
+    4,
+    'all four migrations applied (001 initial schema, 002 adds updated state, 003 client config ownership, 004 config snapshot)'
   );
   strictEqual(migrations[0]!.version, 1);
   strictEqual(migrations[1]!.version, 2);
   strictEqual(migrations[2]!.version, 3);
+  strictEqual(migrations[3]!.version, 4);
 
   // Re-opening the same file should be a no-op (idempotent migrations)
   db.close();
   const db2 = openDatabase(dbPath);
   const migrations2 = db2.prepare('SELECT version FROM schema_migrations').all();
-  strictEqual(migrations2.length, 3, 'reopening does not re-apply migrations');
+  strictEqual(migrations2.length, 4, 'reopening does not re-apply migrations');
   db2.close();
 
   rmSync(dbPath, { force: true });

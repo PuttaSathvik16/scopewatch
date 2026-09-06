@@ -27,13 +27,18 @@ export function configPathFor(client_id: string, projectRoot: string): string {
 export function activateForClient(db: SqliteDatabase, server_id: string, client_id: string, projectRoot: string): void {
   const configPath = configPathFor(client_id, projectRoot);
 
-  recordOwnership(db, server_id, client_id, configPath, server_id);
-  const ownedKeys = getOwnedKeys(db, client_id, configPath);
-
   const entry: ServerConfigEntry = {
     command: 'scopewatch-run',
     args: [server_id, client_id],
   };
+
+  // Record ownership with the EXACT serialized entry being written - this is
+  // the snapshot Phase H's drift detection compares the live file against
+  // later, never a value regenerated from this function's logic at drift-
+  // check time (which would make detection correctness depend on this
+  // function never changing).
+  recordOwnership(db, server_id, client_id, configPath, server_id, JSON.stringify(entry));
+  const ownedKeys = getOwnedKeys(db, client_id, configPath);
 
   const existing = readConfigFile(configPath);
   const updated = mergeConfig(existing, ownedKeys, { [server_id]: entry });

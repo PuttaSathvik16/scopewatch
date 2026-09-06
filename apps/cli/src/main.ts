@@ -113,12 +113,52 @@ program
     if (!result.ok) process.exitCode = 1;
   });
 
+function statusLabel(status: string): string {
+  return status === 'unverifiable' ? 'unverifiable (no historical snapshot - safe to adopt, cannot restore)' : status;
+}
+
 program
   .command('drift')
   .option('--all-clients')
-  .description('(stub) client config drift detection - Phase H')
-  .action(() => {
-    console.log(cmds.cmdDrift().message);
+  .option('--resolve', 'interactively resolve each drifted entry (keep/restore/skip)')
+  .description('Detect (and optionally resolve) client config drift')
+  .action(async (opts: { resolve?: boolean }) => {
+    const db = getDb();
+
+    if (!opts.resolve) {
+      const results = cmds.cmdDrift({ db });
+      for (const { server_id, client_id, result } of results) {
+        if (!result.ok) {
+          console.log(`${server_id} (${client_id}): ${formatError(result.error)}`);
+        } else {
+          console.log(`${server_id} (${client_id}) [${result.entry.config_key}]: ${statusLabel(result.entry.status)}`);
+        }
+      }
+      return;
+    }
+
+    const readline = await import('node:readline/promises');
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+
+    const result = await cmds.cmdDriftResolve({
+      db,
+      promptChoice: async (entry) => {
+        const valid = (await import('@scopewatch/client-adapters')).validResolutionsFor(entry.status);
+        const answer = await rl.question(
+          `${entry.server_id} (${entry.client_id}) [${entry.config_key}] is ${statusLabel(entry.status)}. ` +
+            `Choose (${valid.join('/')}): `
+        );
+        return (valid.includes(answer.trim() as any) ? answer.trim() : 'skip') as any;
+      },
+    });
+    rl.close();
+
+    if (result.ok) {
+      console.log(`Resolved ${result.resolved}, skipped ${result.skipped}.`);
+    } else {
+      console.error(formatError(result.error));
+      process.exitCode = 1;
+    }
   });
 
 program

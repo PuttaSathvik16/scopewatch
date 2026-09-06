@@ -819,7 +819,57 @@ rebuild. Also smoke-tested the compiled `scopewatch` binary directly
 machine's Node 21.7.1 as below the 22.0.0 floor, the same real finding as
 Phase E, not silently worked around.
 
+### Critical follow-up fix: the env fix reopened the problem this product exists to prevent
+
+Threading `process.env` through to fix the ENOENT bug was itself a real
+security regression, caught in review: `mcpHandshakeAndListTools` runs
+during `install`/`test`/`update` - **before** the user has seen a
+capability diff or approved anything. Handing that spawn the CLI's full
+ambient environment meant an unreviewed, not-yet-approved server could read
+every unrelated credential in the user's shell (other API keys, cloud
+tokens, anything) during its very first run - turning the test/handshake
+step itself into an exfiltration opportunity, inside the one product whose
+entire premise is knowing exactly what a tool can access.
+
+**Fix** (`minimal-env.ts`): built a deliberately minimal environment
+following the same philosophy as `scopewatch-run` (Phase F) - `PATH` (the
+actual fix needed) plus platform-baseline variables Node/npm genuinely
+require (`HOME`/`TMPDIR` on POSIX; `USERPROFILE`/`SystemRoot`/`TEMP`/`TMP`/
+`APPDATA`/`PATHEXT` on Windows), plus - only when applicable - the
+*specific* secrets this server's own manifest declares, retrieved via the
+same `secretRef`-based keychain path the wrapper uses. Never a wholesale
+copy of `process.env`.
+
+Applied per call site with different secret availability, each reasoned
+through explicitly rather than treated as one uniform fix:
+- **`install`'s handshake**: no secrets injected at all - at this point in
+  the pipeline nothing has been prompted/stored yet (that happens later, at
+  the `configured` transition). A server that genuinely requires a secret
+  just to start may fail this handshake; documented as an honest, expected
+  outcome, not a bug to route around by reordering the lifecycle to prompt
+  earlier than designed.
+- **`test`**: injects only this server's own already-stored secrets
+  (`collectAvailableSecrets`, best-effort - a missing secret is simply
+  omitted, since this is diagnostic, not activation).
+- **`update`**: injects the *current* (already-active) manifest's stored
+  secrets, since the new version is being test-handshaked against the
+  existing setup before any diff is shown.
+
+**Verified, not assumed**: mutation-tested `minimalSpawnEnv` itself
+(temporarily made it spread `process.env` back in) and confirmed 3 of 5
+tests correctly failed with specific assertions ("an unrelated real
+environment variable must never leak into the spawn env"), then restored
+and confirmed green. Added a dedicated test
+(`cmd-test-minimal-env.test.ts`) proving `cmdTest`'s actual real spawn env
+contains this server's own secret plus the baseline and nothing else - not
+inferred from `minimalSpawnEnv`'s unit tests alone. Re-ran Journey A after
+the fix to confirm the narrower environment still resolves the original
+ENOENT (it does - `PATH` alone was always the actual requirement).
+
+Full suite: 156/156 passing (150 prior + 6 new), verified offline and from
+a clean rebuild, real macOS keychain confirmed clean.
+
 ---
 
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅ complete)  
-**Commits:** 17 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface)
+**Commits:** 18 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix)

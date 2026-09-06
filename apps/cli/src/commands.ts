@@ -12,11 +12,28 @@ import { computeDiff, renderDiff, extractSummary } from '@scopewatch/diff-engine
 import type { ServerManifest } from '@scopewatch/manifest';
 import { checkPrerequisites, installPackage, checkEntryPoint, type InstallRunner, type CommandRunner } from '@scopewatch/install-adapters';
 import { activateForClient, deactivateForClient } from '@scopewatch/client-adapters';
-import { storeSecret, promptSecret, secretRef } from '@scopewatch/secrets';
+import { storeSecret, retrieveSecret, promptSecret, secretRef } from '@scopewatch/secrets';
 import { searchServers, getServerInfo, type FetchFn, type RegistryServer } from './registry-client.js';
 import { mcpHandshakeAndListTools, type SpawnFn as McpSpawnFn } from './mcp-client.js';
 import { buildManifestFromRegistry } from './build-manifest.js';
 import { realInstallRunner, realCommandRunner } from './real-runners.js';
+import { minimalSpawnEnv } from './minimal-env.js';
+
+/**
+ * Retrieve whichever of a manifest's declared secrets are actually stored,
+ * for injection into an unreviewed/not-yet-activated handshake spawn - best
+ * effort, since this is a diagnostic/discovery spawn, not activation. A
+ * secret that isn't stored yet is simply omitted, not a fatal error here
+ * (unlike scopewatch-run's fail-loud behavior at real activation time).
+ */
+function collectAvailableSecrets(server_id: string, manifest: ServerManifest): Record<string, string> {
+  const secrets: Record<string, string> = {};
+  for (const decl of manifest.secrets) {
+    const result = retrieveSecret(secretRef(server_id, decl.id));
+    if (result.ok) secrets[decl.id] = result.value;
+  }
+  return secrets;
+}
 
 export type CliDeps = {
   db: SqliteDatabase;
@@ -89,11 +106,21 @@ export async function cmdInstall(serverName: string, client_id: string, deps: Cl
   void entryPointError;
 
   // Real MCP handshake to get real tools/list data for capability inference -
-  // not a placeholder.
+  // not a placeholder. Runs with a MINIMAL environment (PATH + platform
+  // baseline only, never the CLI's full process.env) - this server has not
+  // been reviewed or approved yet at this point in the pipeline (no diff
+  // has been shown), so it must not be handed anything beyond what it needs
+  // to be spawned at all. No secrets are injected here even though the
+  // registry already told us which env vars this server declares: at this
+  // stage in the flow nothing has been prompted/stored yet (that happens
+  // further below, at the configured transition) - a server that genuinely
+  // requires a secret just to start may fail this handshake, which is an
+  // honest, informative outcome, not a bug to route around by prompting
+  // for secrets earlier than the lifecycle design calls for.
   const handshakeResult = await mcpHandshakeAndListTools(
     'npx',
     ['-y', pkg.identifier],
-    process.env,
+    minimalSpawnEnv(),
     deps.mcpSpawnFn,
   );
   if (!handshakeResult.ok) return { ok: false, stage: 'handshake', error: handshakeResult.error };
@@ -148,7 +175,11 @@ export async function cmdTest(server_id: string, client_id: string, deps: CliDep
     return { ok: false as const, error: new Error(`No manifest on record for '${server_id}'. Run 'scopewatch install' first.`) };
   }
   const parsed = JSON.parse(manifest.manifest_json) as ServerManifest;
-  const result = await mcpHandshakeAndListTools('npx', ['-y', parsed.source.location], process.env, deps.mcpSpawnFn);
+  // Minimal environment + only this server's own declared secrets (whichever
+  // are already stored), retrieved via the same secretRef-based keychain
+  // path scopewatch-run uses - never the CLI's full process.env.
+  const env = minimalSpawnEnv(collectAvailableSecrets(server_id, parsed));
+  const result = await mcpHandshakeAndListTools('npx', ['-y', parsed.source.location], env, deps.mcpSpawnFn);
   return result;
 }
 
@@ -189,7 +220,15 @@ export async function cmdUpdate(server_id: string, client_id: string, deps: CliD
   const pkg = registryServer.packages?.[0];
   if (!pkg) return { ok: false as const, stage: 'registry_fetch', error: new Error('No installable package.') };
 
-  const handshakeResult = await mcpHandshakeAndListTools('npx', ['-y', pkg.identifier], process.env, deps.mcpSpawnFn);
+  // Minimal environment + the CURRENT (already-active) manifest's own
+  // declared secrets, retrieved via the same controlled keychain path -
+  // never process.env. The new version hasn't been reviewed/approved yet
+  // either (that's the whole point of the diff about to be shown), so it
+  // gets the same minimal treatment as install's handshake, just with the
+  // existing secrets available since this server was already active.
+  const currentParsed = JSON.parse(current.manifest_json) as ServerManifest;
+  const updateEnv = minimalSpawnEnv(collectAvailableSecrets(server_id, currentParsed));
+  const handshakeResult = await mcpHandshakeAndListTools('npx', ['-y', pkg.identifier], updateEnv, deps.mcpSpawnFn);
   if (!handshakeResult.ok) return { ok: false as const, stage: 'handshake', error: handshakeResult.error };
 
   const manifestResult = buildManifestFromRegistry(registryServer, handshakeResult.tools);
@@ -206,8 +245,7 @@ export async function cmdUpdate(server_id: string, client_id: string, deps: CliD
     JSON.stringify(newManifest)
   );
 
-  const oldManifestParsed = JSON.parse(current.manifest_json) as ServerManifest;
-  const diff = computeDiff(oldManifestParsed, newManifest);
+  const diff = computeDiff(currentParsed, newManifest);
   const diffId = insertDiff(db, current.id, newManifestId, diff, diff.newly_destructive, diff.riskLevel, extractSummary(diff));
 
   const engine = new LifecycleEngine(db);

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "source": { "type": "npm", "location": "example" },
+  "checksum": "abc123",
+  "tools": [
+    { "id": "tool1", "name": "Tool 1", "description": "A tool" }
+  ],
+  "capabilities": [
+    {
+      "verb": "read",
+      "provenance": "declared"
+    }
+  ],
+  "secrets": []
+}

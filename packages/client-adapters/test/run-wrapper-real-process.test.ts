@@ -86,7 +86,21 @@ test('real process: exit code 0 propagates correctly (not just non-zero)', async
   }
 });
 
-test('real process: SIGTERM sent to the wrapper is really forwarded to the real child, which really receives it and exits', async () => {
+test(
+  'real process: SIGTERM sent to the wrapper is really forwarded to the real child, which really receives it and exits',
+  {
+    // Found via a real Windows CI run: Windows has no POSIX signal semantics.
+    // Node's process.kill('SIGTERM') on win32 unconditionally terminates the
+    // target process rather than invoking a registered handler - there is no
+    // way for a child to "receive and handle" SIGTERM to print its own
+    // confirmation, so this test's actual premise doesn't hold on Windows.
+    // The wrapper's real cross-platform signal-forwarding code path itself
+    // (child.kill(sig) in run-wrapper.ts) is exercised regardless via the
+    // exit-code propagation tests above; only this specific handler-visibility
+    // assertion is Windows-incompatible by construction.
+    skip: process.platform === 'win32' ? 'Windows has no POSIX SIGTERM handler semantics to observe' : false,
+  },
+  async () => {
   const dir = mkdtempSync(join(tmpdir(), 'scopewatch-real-process-'));
   const db = setupActiveServer(dir, 'signal-real-test-server');
 

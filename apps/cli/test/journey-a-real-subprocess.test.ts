@@ -219,7 +219,21 @@ function runCliWithTty(args: string[], env: NodeJS.ProcessEnv, input: string): P
 
 test(
   'REAL SUBPROCESS Journey A: the actual compiled binary, run as a real user would, completes install through diff',
-  { timeout: 60000 },
+  {
+    timeout: 60000,
+    // Found via a real Windows CI run: makeShimBin() writes POSIX shell
+    // scripts (`#!/bin/sh`) for the shimmed node/npm/npx, and runCliWithTty's
+    // pty allocation uses Python's pty.spawn (POSIX-only, no ptmx/openpty
+    // equivalent invoked this way on Windows). Both are fundamental to this
+    // test's isolation strategy, not incidental - a real Windows-native
+    // rewrite (batch/PowerShell shims, ConPTY-based pty allocation) is future
+    // work, not something to fake for the sake of a green checkmark. The
+    // underlying commands this test exercises are still proven end-to-end on
+    // macOS and Linux; Windows real-subprocess coverage remains a known,
+    // stated gap - consistent with Phase D's own "Windows keychain path
+    // unverified on real hardware" disclosure.
+    skip: process.platform === 'win32' ? 'shim scripts and pty allocation in this test are POSIX-only; see comment' : false,
+  },
   async () => {
   const stateDir = mkdtempSync(join(tmpdir(), 'scopewatch-real-state-'));
   const shimDir = makeShimBin();

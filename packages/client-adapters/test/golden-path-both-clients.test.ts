@@ -1,13 +1,12 @@
 import { test } from 'node:test';
 import { strictEqual, ok, notStrictEqual } from 'node:assert';
-import { execFileSync } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { openDatabase, insertManifest, LifecycleEngine, getOwnedKeys } from '@scopewatch/state';
-import { storeSecret, deleteSecret, secretRef } from '@scopewatch/secrets';
+import { storeSecret, retrieveSecret, deleteSecret, secretRef } from '@scopewatch/secrets';
 import { activateForClient } from '../src/activate.js';
 import { CLAUDE_CODE_CLIENT_ID, claudeCodeConfigPath } from '../src/claude-code-adapter.js';
 import { CURSOR_CLIENT_ID, cursorConfigPath } from '../src/cursor-adapter.js';
@@ -186,17 +185,21 @@ test('Secret sharing, not duplication: exactly ONE keychain entry backs BOTH cli
   try {
     storeSecret(ref, SECRET_VALUE);
 
-    // Prove there is exactly one keychain entry for this reference: `security`
-    // find-generic-password returns exactly one match, or none - there is no
+    // Prove there is exactly one keychain entry for this reference via the
+    // real cross-platform dispatcher (retrieveSecret - security on macOS,
+    // secret-tool on Linux, PowerShell/CredRead on Windows), not a hardcoded
+    // macOS-only `security` call: that version hard-failed with ENOENT on a
+    // real Windows CI run, since `security` doesn't exist there. There is no
     // "list all entries with this account name" ambiguity to check, because
     // the account name IS the full server_id:secret_id reference, and the
     // reference construction (secretRef) is client-agnostic by design - it
     // takes no client_id parameter at all, so a second activation for a
     // second client cannot mint a second keychain entry even in principle.
-    const found = execFileSync('security', ['find-generic-password', '-a', ref, '-s', 'scopewatch', '-w'], {
-      encoding: 'utf-8',
-    }).trim();
-    strictEqual(found, SECRET_VALUE, 'exactly one keychain entry exists for this reference, with the expected value');
+    const found = retrieveSecret(ref);
+    ok(found.ok, `exactly one keychain entry exists for this reference, with the expected value - got error: ${!found.ok ? found.error.message : ''}`);
+    if (found.ok) {
+      strictEqual(found.value, SECRET_VALUE, 'exactly one keychain entry exists for this reference, with the expected value');
+    }
 
     const db = setupServerActiveOnBothClients(projectRoot);
     activateForClient(db, SERVER_ID, CLAUDE_CODE_CLIENT_ID, projectRoot);

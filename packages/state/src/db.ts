@@ -13,9 +13,16 @@ export type SqliteDatabase = Database.Database;
  * The single, machine-wide state database location. Local-first: one DB
  * tracks every installed server across every project and client, not one
  * per project. Creates the containing directory if it doesn't exist yet.
+ *
+ * Respects SCOPEWATCH_STATE_DIR when set, overriding ~/.scopewatch - this
+ * exists so a real-subprocess integration test can run the actual compiled
+ * CLI binary without ever touching the real user's home directory state.
+ * Off by default; same dependency-injection philosophy used everywhere
+ * else in this codebase (CommandRunner, FetchFn, SpawnFn), just applied at
+ * the OS-process boundary since a spawned subprocess can't be code-injected.
  */
 export function defaultDbPath(): string {
-  const dir = join(homedir(), '.scopewatch');
+  const dir = process.env.SCOPEWATCH_STATE_DIR ?? join(homedir(), '.scopewatch');
   mkdirSync(dir, { recursive: true });
   return join(dir, 'state.db');
 }

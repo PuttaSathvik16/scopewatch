@@ -1,7 +1,11 @@
 import { networkUnreachableError, registryErrorResponse, serverNotFoundError } from './registry-errors.js';
 import type { RegistryError } from './registry-errors.js';
 
-const REGISTRY_BASE_URL = 'https://registry.modelcontextprotocol.io';
+// Respects SCOPEWATCH_REGISTRY_URL when set - lets a real-subprocess
+// integration test point the real compiled binary at a local fixture
+// registry instead of the real network, without any code-level injection
+// (which isn't possible across a process boundary). Off by default.
+const REGISTRY_BASE_URL = process.env.SCOPEWATCH_REGISTRY_URL ?? 'https://registry.modelcontextprotocol.io';
 
 export type RegistryPackage = {
   registryType: string;

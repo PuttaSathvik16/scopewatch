@@ -15,7 +15,8 @@
     }
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/**/*.tsbuildinfo"
   ],
   "scripts": {
     "build": "tsc && node -e \"try{require('fs').chmodSync('dist/bin/scopewatch-run.js',0o755)}catch(e){}\"",

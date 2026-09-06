@@ -21,6 +21,7 @@
   "references": [
     { "path": "packages/manifest" },
     { "path": "packages/diff-engine" },
-    { "path": "packages/state" }
+    { "path": "packages/state" },
+    { "path": "packages/install-adapters" }
   ]
 }

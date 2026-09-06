@@ -1,0 +1,27 @@
+{
+  "name": "@scopewatch/install-adapters",
+  "version": "0.0.1",
+  "description": "npm/npx install adapter: prerequisite detection and categorized install diagnostics",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

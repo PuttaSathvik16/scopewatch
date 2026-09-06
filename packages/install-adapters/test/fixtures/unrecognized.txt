@@ -1,0 +1,4 @@
+npm error code EBADPLATFORM
+npm error notsup Unsupported platform for some-package@1.0.0: wanted {"os":"win32"} (current: {"os":"darwin"})
+npm error notsup Valid os:   win32
+npm error notsup Actual os:  darwin

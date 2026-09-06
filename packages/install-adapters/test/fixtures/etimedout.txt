@@ -1,0 +1,4 @@
+npm error code ETIMEDOUT
+npm error errno ETIMEDOUT
+npm error network request to https://registry.npmjs.org/some-package failed, reason: connect ETIMEDOUT 104.16.0.35:443
+npm error network This is a problem related to network connectivity.

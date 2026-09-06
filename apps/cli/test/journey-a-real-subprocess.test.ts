@@ -464,6 +464,18 @@ test(
         } catch (e: any) {
           console.error('[DIAG] absolute npm.cmd failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
         }
+        // Critical check: does the REAL system npm (the one actions/setup-node
+        // just installed, no custom shim/PATH override at all) resolve via
+        // plain execFileAsync the exact same way @scopewatch/install-adapters'
+        // defaultRunner calls it? If this ALSO fails, it means Scopewatch's
+        // own product code has never actually worked against a real Windows
+        // npm install - a real product bug, not a test-harness issue.
+        try {
+          const r3 = await execFileAsync('npm', ['--version'], { encoding: 'utf-8' });
+          console.error('[DIAG] REAL system npm (no custom PATH) succeeded:', JSON.stringify(r3));
+        } catch (e: any) {
+          console.error('[DIAG] REAL system npm (no custom PATH) failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
+        }
       }
 
       const doctorResult = await runCli(['doctor'], baseEnv);

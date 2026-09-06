@@ -1,0 +1,20 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "composite": true,
+    "declaration": true
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "test", "dist"],
+  "references": [
+    { "path": "../../packages/manifest" },
+    { "path": "../../packages/diff-engine" },
+    { "path": "../../packages/state" },
+    { "path": "../../packages/install-adapters" },
+    { "path": "../../packages/secrets" },
+    { "path": "../../packages/client-adapters" },
+    { "path": "../../packages/capability-inference" }
+  ]
+}

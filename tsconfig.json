@@ -25,6 +25,7 @@
     { "path": "packages/install-adapters" },
     { "path": "packages/secrets" },
     { "path": "packages/client-adapters" },
-    { "path": "packages/capability-inference" }
+    { "path": "packages/capability-inference" },
+    { "path": "apps/cli" }
   ]
 }

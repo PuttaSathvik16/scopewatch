@@ -1,9 +1,13 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { redact } from '@scopewatch/secrets';
 import {
   spawnFailedError,
   handshakeTimeoutError,
   malformedResponseError,
+  initializeRejectedError,
+  toolsListFailedError,
   protocolErrorResponse,
+  attachStderrContext,
   type McpTestError,
 } from './mcp-errors.js';
 
@@ -18,12 +22,35 @@ export type McpToolResult = {
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean; idempotentHint?: boolean; openWorldHint?: boolean };
 };
 
+function isValidToolsListResult(result: unknown): result is { tools: McpToolResult[] } {
+  if (typeof result !== 'object' || result === null) return false;
+  const tools = (result as any).tools;
+  if (!Array.isArray(tools)) return false;
+  return tools.every((t) => typeof t === 'object' && t !== null && typeof t.name === 'string' && typeof t.description === 'string');
+}
+
 /**
  * Baseline connection/tool-list check: spawn the server, perform the real
- * MCP JSON-RPC initialize handshake, then call tools/list. This is
- * DELIBERATELY minimal - it answers "does this process speak MCP at all,"
- * nothing more. Sanitized log capture, retry/backoff, and deeper failure
- * taxonomies are the Phase I diagnostics module's job, not this function's.
+ * MCP JSON-RPC initialize handshake, then call tools/list. Deliberately
+ * minimal beyond the categorized failures below - it answers "does this
+ * process speak MCP at all, and can it enumerate its tools," nothing more.
+ * Retry/backoff is explicitly out of scope for v1: this function reports
+ * current, actual status at the moment it's run - a retry loop would blur
+ * "is this broken right now" into "was this eventually reachable," a
+ * weaker signal for a trust/diagnostic tool. A flaky real server's slow
+ * cold start is itself diagnostically meaningful, surfaced as a timeout,
+ * not silently retried away.
+ *
+ * SANITIZED LOG CAPTURE: stderr from the real spawned process is captured
+ * and passed through @scopewatch/secrets' redact() (Phase D) - the SAME
+ * mechanism used everywhere else in this build, not a second one - before
+ * being attached to any returned error. This matters because a failing
+ * server's raw stderr is exactly the kind of place a secret value could
+ * leak unexpectedly (embedded in an error message, not just in an expected
+ * field) - the same risk that justified content-based redaction in Phase D.
+ * Any secret this handshake's env actually contains was already registered
+ * for redaction by retrieveSecret() at the point it was fetched (Phase D),
+ * so redact() here catches it automatically.
  */
 export function mcpHandshakeAndListTools(
   command: string,
@@ -42,6 +69,7 @@ export function mcpHandshakeAndListTools(
     }
 
     let buffer = '';
+    let stderrBuffer = '';
     let settled = false;
     let sentInitialized = false;
 
@@ -49,19 +77,26 @@ export function mcpHandshakeAndListTools(
       if (settled) return;
       settled = true;
       child.kill();
-      resolve({ ok: false, error: handshakeTimeoutError(timeoutMs) });
+      resolve({ ok: false, error: withStderr(handshakeTimeoutError(timeoutMs)) });
     }, timeoutMs);
+
+    const withStderr = (error: McpTestError): McpTestError => attachStderrContext(error, redact(stderrBuffer));
 
     const finish = (result: { ok: true; tools: McpToolResult[] } | { ok: false; error: McpTestError }) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       child.kill();
+      if (!result.ok) result.error = withStderr(result.error);
       resolve(result);
     };
 
     child.on('error', (err) => {
       finish({ ok: false, error: spawnFailedError(command, err.message) });
+    });
+
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderrBuffer += chunk.toString();
     });
 
     child.stdout?.on('data', (chunk: Buffer) => {
@@ -80,7 +115,14 @@ export function mcpHandshakeAndListTools(
         }
 
         if (msg.error) {
-          finish({ ok: false, error: protocolErrorResponse(msg.error.code ?? -1, msg.error.message ?? 'unknown error') });
+          // Distinguish which stage rejected us: id 1 is initialize, id 2 is tools/list.
+          if (msg.id === 1) {
+            finish({ ok: false, error: initializeRejectedError(msg.error.code ?? -1, msg.error.message ?? 'unknown error') });
+          } else if (msg.id === 2) {
+            finish({ ok: false, error: toolsListFailedError(msg.error.code ?? -1, msg.error.message ?? 'unknown error') });
+          } else {
+            finish({ ok: false, error: protocolErrorResponse(msg.error.code ?? -1, msg.error.message ?? 'unknown error') });
+          }
           return;
         }
 
@@ -91,8 +133,12 @@ export function mcpHandshakeAndListTools(
             child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
             child.stdin?.write(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }) + '\n');
           }
-        } else if (msg.id === 2 && msg.result) {
-          finish({ ok: true, tools: msg.result.tools ?? [] });
+        } else if (msg.id === 2 && msg.result !== undefined) {
+          if (!isValidToolsListResult(msg.result)) {
+            finish({ ok: false, error: malformedResponseError(line) });
+            return;
+          }
+          finish({ ok: true, tools: msg.result.tools });
           return;
         }
       }

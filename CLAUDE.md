@@ -266,7 +266,18 @@ explicitly rather than being assumed).
 
 ---
 
-## Phase D: Install Adapter (npm/npx) ✅ (2026-09-06)
+## Phase E: Install Adapter (npm/npx) ✅ (2026-09-06)
+
+**Labeling correction:** this was tracked as "Phase D" throughout its own
+implementation and review - a mislabeling that carried through several
+messages before being caught. Per the original brief's actual phase order,
+this is **Phase E** (install adapter). **Phase D (Secrets) has not been built
+yet** and is next. No technical harm from the ordering - install-adapters and
+secrets are sibling packages with no dependency on each other, and Phase C's
+lifecycle engine was deliberately built side-effect-agnostic
+(`pending_side_effects` is a plain string array) to accommodate either
+arriving first. This section is renamed to the correct phase letter so a
+future session doesn't inherit the same confusion.
 
 **Node minimum: 22.0.0** (corrected from an initially-proposed 18.0.0, which was
 already two EOL cycles out of date the day this was written - Node 18 EOL'd
@@ -294,7 +305,7 @@ Node script, that importing it doesn't throw synchronously. This is a load
 smoke-check, NOT a protocol handshake. MCP servers speak JSON-RPC over stdio
 and don't have a `--version`-and-exit surface - actually starting one and
 checking for a working handshake is real estate owned by `scopewatch test
-<server>` and the diagnostics module (Phase I), not Phase D. Documented
+<server>` and the diagnostics module (Phase I), not Phase E. Documented
 directly in the code (`errors.ts`) so this boundary isn't accidentally
 "improved" into protocol testing later.
 
@@ -323,10 +334,10 @@ when the prerequisite check fails.
   prerequisite gate) since they exist to test real registry behavior, not
   re-litigate this machine's Node version.
 
-Full suite: 59/59 passing (37 Phase A/B/C + 22 Phase D offline). e2e: 4/4
+Full suite: 59/59 passing (37 Phase A/B/C + 22 Phase E offline). e2e: 4/4
 passing against the real npm registry.
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅ complete)  
-**Commits:** 7 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase D install adapter)
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase E ✅ complete; Phase D — Secrets — next)  
+**Commits:** 7 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter)

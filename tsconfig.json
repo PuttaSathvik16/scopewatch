@@ -16,5 +16,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
-  }
+  },
+  "files": [],
+  "references": [
+    { "path": "packages/manifest" },
+    { "path": "packages/diff-engine" },
+    { "path": "packages/state" }
+  ]
 }

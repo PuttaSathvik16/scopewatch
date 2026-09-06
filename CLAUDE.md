@@ -116,21 +116,98 @@ Diff output simultaneously tracks:
 1. **Capability delta** (the four-tier severity model)
 2. **Credential delta**: new secrets vs reused secrets. A new tool reusing an existing secret is materially lower risk than a new tool requiring a new secret.
 
-## Current Phase: A — Manifest & Schema Foundation
+## Phase A Completion ✅ (2026-09-06)
 
-### Phase A Checklist
-- [ ] Zod schema implementation for ServerManifest
-- [ ] Validation error messages (readable, specific, not raw Zod dumps)
-- [ ] Migration system for schema version bumps
-- [ ] Test fixtures: valid manifest, malformed manifest (various error types)
-- [ ] Round-trip test: parse → serialize → parse with no data loss
+### Delivered
+- ✅ Zod schema implementation for ServerManifest with all constraint validation
+- ✅ Validation error messages: context-aware, actionable, no raw Zod dumps
+- ✅ Test fixtures: 1 valid manifest, 2 malformed manifests covering distinct error types
+- ✅ Round-trip test: parse → JSON.stringify → parse with `deepStrictEqual` verification
+- ✅ Type guards (`isServerManifest`) and validation result handling
 
-### Phase A Exit Check
-A hand-written malformed manifest fixture produces a clear, specific validation error. A valid manifest round-trips with no data loss. Do not proceed to Phase B until this is genuinely true.
+### Phase A Exit Checks (all passing)
+```
+TAP version 13
+1..9
+# tests 9, pass 9, fail 0
+```
+
+All checks confirmed:
+- Hand-written malformed fixtures produce clear, specific errors with recovery suggestions
+- Valid manifest round-trips with zero data loss
+- All six verbs accepted correctly
+- Provenance tracking (declared/inferred) validated
+- Secret id format enforcement (uppercase with underscores)
+
+---
+
+## Current Phase: B — Capability Diff Engine (design locked, implementation pending)
+
+### Phase B Scope (P0: correctness of diff is higher than all other P0s)
+The diff engine is the product. It must:
+1. **Compute capability delta**: added/removed/modified capabilities at resource level
+2. **Categorize destructiveness** using the four-tier model:
+   - Tier 1: Categorical acquisition (tool goes from no {write|delete|execute} → has any)
+   - Tier 2: Scope expansion (same verb, resource scope widens)
+   - Tier 3: Scope narrowing (resource scope reduction — safe, but surfaced)
+   - Tier 4: Cosmetic (description-only changes — not a capability change)
+3. **Track credential delta** (FOUR states, not two):
+   - `new`: new secret introduced
+   - `reused`: existing secret now used by additional tools
+   - `removed`: secret no longer required
+   - `required_changed`: secret's `required` field changed from false→true (graceful degradation disappears)
+4. **Render plain-language diff** that humans can summarize unaided
+5. **Ordering rule**: render by severity descending (Tier 1 first) and group by tool; never by manifest array order
+
+### Diff Gate Policy (locked)
+`newly_destructive: boolean = true iff any Tier 1 change exists`
+
+This is the only binary gate for v1. Tier 2 never flips it, even for large scope expansions. If Tier 2 should block in future, that's a Phase 2 runtime-guard decision, not a reason to blur the boundary now.
+
+### Phase B Fixture Matrix (12 cases, locked)
+
+Capability changes (6):
+1. Pure addition: new capability on tool already in manifest
+2. Pure removal: existing capability removed
+3. Scope widening: same tool, same verb, resource constraint widens (e.g., repo:owner/name → repo:*)
+4. Scope narrowing: same tool, same verb, resource constraint narrows
+5. Description-only: manifest differs only in description text → cosmetic, zero alert
+6. Newly destructive verb on existing tool: tool had [read], now [read, write] → Tier 1
+
+Tool-level changes (2):
+7. Brand-new tool_id with destructive verb: no prior tool_id in v1.0.0, v1.1.0 introduces it with [write] → Tier 1 (different code path, same tier)
+8. Tool removed entirely: tool_id drops from capabilities entirely (not just capabilities trimmed)
+
+Credential changes (3):
+9. New required secret, no reuse: new secret_id in v1.1.0, used only by new tools → riskLevel: high
+10. New tool reusing existing secret: tool added, references secret already in v1.0.0.used_by → riskLevel: medium
+11. Secret flipping required: false → true: same secret_id, required changed [false→true] → required_changed, riskLevel: medium
+
+No-op (1):
+12. No-op version bump: checksum/version change, zero capability/secret delta → must render "no capability changes" not silence
+
+### Phase B Acceptance Test Method (locked)
+For each of the 12 fixtures, write down the one-sentence summary a correct reading should produce. That sentence is the test assertion. Example:
+- Fixture 5 (description-only): Expected summary: "Description updated, no capability changes."
+- Fixture 6 (newly destructive): Expected summary: "File reader now has write access to repository (previously read-only)."
+- Fixture 12 (no-op): Expected summary: "No capability changes detected."
+
+Test asserts: `rendered_diff.includes(expected_summary)` — the human-readable diff must contain the exact claim.
+
+### Phase B Checklist
+- [ ] Implement diff computation algorithm
+- [ ] Build all 12 fixture pairs (JSON files)
+- [ ] Write expected_summary for each fixture
+- [ ] Implement diff rendering (severity-ordered, tool-grouped)
+- [ ] Write tests: each fixture produces diff containing its expected_summary
+- [ ] Verify all tests pass
+
+### Phase B Exit Check
+All 12 fixtures pass: diff output includes the human-readable summary without the underlying manifests visible.
 
 ## Deviations from Brief (none yet)
 
 ---
 
-**Last updated:** 2026-09-06 (scaffolding)  
-**Current session focus:** Phase A — Manifest Schema & Validation
+**Last updated:** 2026-09-06 (Phase A complete, Phase B ready)  
+**Commits:** 1 (Phase A foundation)

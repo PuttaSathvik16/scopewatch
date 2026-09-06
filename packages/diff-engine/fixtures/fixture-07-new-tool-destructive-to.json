@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "source": { "type": "npm", "location": "example-tools" },
+  "checksum": "sha256:to7",
+  "tools": [
+    { "id": "reader", "name": "File Reader", "description": "Read files" },
+    { "id": "deleter", "name": "File Deleter", "description": "Delete files from repo" }
+  ],
+  "capabilities": [
+    { "tool_id": "reader", "verb": "read", "resource": "repo:owner/name", "provenance": "declared" },
+    { "tool_id": "deleter", "verb": "read", "resource": "repo:owner/name", "provenance": "declared" },
+    { "tool_id": "deleter", "verb": "delete", "resource": "repo:owner/name", "provenance": "declared" }
+  ],
+  "secrets": [
+    { "id": "GITHUB_TOKEN", "description": "GitHub token", "required": true, "used_by": ["reader", "deleter"] }
+  ]
+}

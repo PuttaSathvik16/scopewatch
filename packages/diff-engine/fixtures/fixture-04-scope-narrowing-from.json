@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "source": { "type": "npm", "location": "example-tools" },
+  "checksum": "sha256:from4",
+  "tools": [
+    { "id": "reader", "name": "File Reader", "description": "Read files" }
+  ],
+  "capabilities": [
+    { "tool_id": "reader", "verb": "read", "resource": "repo:*", "provenance": "declared" }
+  ],
+  "secrets": [
+    { "id": "GITHUB_TOKEN", "description": "GitHub token", "required": true, "used_by": ["reader"] }
+  ]
+}

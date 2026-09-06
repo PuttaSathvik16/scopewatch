@@ -28,6 +28,21 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y gnome-keyring libsecret-tools dbus-x11
+          # A bare `gnome-keyring-daemon --unlock` has nothing to unlock: with
+          # no pre-existing keyring file, secret-tool's default "login"
+          # collection alias resolves to nothing ("Object does not exist at
+          # path .../collection/login") - found via a real CI run, not
+          # assumed. Pre-creating an always-unlocked login.keyring gives the
+          # daemon a real "login" collection to attach to.
+          mkdir -p ~/.local/share/keyrings
+          cat > ~/.local/share/keyrings/login.keyring <<'EOF'
+          [keyring]
+          display-name=login
+          ctime=0
+          mtime=0
+          lock-on-idle=false
+          lock-after=false
+          EOF
           eval "$(dbus-launch --sh-syntax)"
           echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
           echo -n "" | gnome-keyring-daemon --unlock --replace --components=secrets

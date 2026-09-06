@@ -9,10 +9,14 @@ import { CLAUDE_CODE_CLIENT_ID, claudeCodeConfigPath } from '../src/claude-code-
 import { CURSOR_CLIENT_ID, cursorConfigPath } from '../src/cursor-adapter.js';
 
 test('configPathFor: correct paths for both clients', () => {
-  strictEqual(configPathFor(CLAUDE_CODE_CLIENT_ID, '/my/project'), '/my/project/.mcp.json');
-  strictEqual(configPathFor(CURSOR_CLIENT_ID, '/my/project'), '/my/project/.cursor/mcp.json');
-  strictEqual(claudeCodeConfigPath('/my/project'), '/my/project/.mcp.json');
-  strictEqual(cursorConfigPath('/my/project'), '/my/project/.cursor/mcp.json');
+  // Found via a real Windows CI run: this test hardcoded POSIX separators
+  // while the real functions correctly use path.join (native separators per
+  // platform) - a test bug, not a product bug. join() here makes the
+  // expectation match whatever the current platform actually produces.
+  strictEqual(configPathFor(CLAUDE_CODE_CLIENT_ID, '/my/project'), join('/my/project', '.mcp.json'));
+  strictEqual(configPathFor(CURSOR_CLIENT_ID, '/my/project'), join('/my/project', '.cursor', 'mcp.json'));
+  strictEqual(claudeCodeConfigPath('/my/project'), join('/my/project', '.mcp.json'));
+  strictEqual(cursorConfigPath('/my/project'), join('/my/project', '.cursor', 'mcp.json'));
 });
 
 test('activateForClient: creates .mcp.json for Claude Code with the wrapper command', () => {

@@ -1,0 +1,67 @@
+{
+  "schemaVersion": 1,
+  "version": "1.2.0",
+  "source": {
+    "type": "npm",
+    "location": "my-github-tools"
+  },
+  "checksum": "sha256:abc123def456",
+  "tools": [
+    {
+      "id": "file_reader",
+      "name": "File Reader",
+      "description": "Read files from the repository"
+    },
+    {
+      "id": "repo_writer",
+      "name": "Repo Writer",
+      "description": "Write changes to the repository"
+    }
+  ],
+  "capabilities": [
+    {
+      "tool_id": "file_reader",
+      "verb": "read",
+      "resource": "repo:owner/name",
+      "provenance": "declared"
+    },
+    {
+      "tool_id": "file_reader",
+      "verb": "fetch",
+      "resource": "http:*",
+      "provenance": "inferred",
+      "description": "inferred from tool name and parameter analysis"
+    },
+    {
+      "tool_id": "repo_writer",
+      "verb": "read",
+      "resource": "repo:owner/name",
+      "provenance": "declared"
+    },
+    {
+      "tool_id": "repo_writer",
+      "verb": "write",
+      "resource": "repo:owner/name",
+      "provenance": "declared"
+    }
+  ],
+  "secrets": [
+    {
+      "id": "GITHUB_TOKEN",
+      "description": "GitHub personal access token",
+      "required": true,
+      "used_by": ["file_reader", "repo_writer"]
+    },
+    {
+      "id": "SLACK_BOT_TOKEN",
+      "description": "Slack app token",
+      "required": false,
+      "used_by": ["repo_writer"]
+    }
+  ],
+  "metadata": {
+    "author": "Example Team",
+    "license": "MIT",
+    "homepage": "https://example.com"
+  }
+}

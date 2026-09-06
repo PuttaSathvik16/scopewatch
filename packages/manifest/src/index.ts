@@ -1,0 +1,25 @@
+export {
+  VerbSchema,
+  ProvenanceSchema,
+  CapabilityEntrySchema,
+  SecretDeclarationSchema,
+  ToolDeclarationSchema,
+  SourceSchema,
+  MetadataSchema,
+  ServerManifestSchema,
+  parseManifest,
+  validateManifest,
+  isServerManifest,
+  type Verb,
+  type Provenance,
+  type CapabilityEntry,
+  type SecretDeclaration,
+  type ToolDeclaration,
+  type Source,
+  type Metadata,
+  type ServerManifest,
+  type ValidationResult,
+  type ValidationError,
+} from './schema.js';
+
+export { formatValidationErrors, renderValidationError } from './errors.js';

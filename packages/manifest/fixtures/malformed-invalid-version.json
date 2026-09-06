@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "not-semver",
+  "source": { "type": "npm", "location": "example" },
+  "checksum": "abc123",
+  "tools": [
+    { "id": "tool1", "name": "Tool 1", "description": "A tool" }
+  ],
+  "capabilities": [],
+  "secrets": []
+}

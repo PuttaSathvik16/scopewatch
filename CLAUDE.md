@@ -266,5 +266,67 @@ explicitly rather than being assumed).
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅ complete)  
-**Commits:** 6 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix)
+## Phase D: Install Adapter (npm/npx) ✅ (2026-09-06)
+
+**Node minimum: 22.0.0** (corrected from an initially-proposed 18.0.0, which was
+already two EOL cycles out of date the day this was written - Node 18 EOL'd
+2025-04-30, Node 20 EOL'd 2026-04-30. Node 22 is Maintenance LTS through
+2027-04; Node 24 is current Active LTS and is recommended, though not
+required, in doctor-style messaging).
+
+### Failure categorization (locked)
+Matches on npm's own stable error codes, not free-text pattern matching:
+
+| Category | npm signal | 
+|---|---|
+| `node_not_installed` | `node --version` throws ENOENT |
+| `node_version_too_old` | parsed version `< 22.0.0` |
+| `npm_not_installed` | `npm --version` throws ENOENT |
+| `package_not_found` | `E404`, `ETARGET` |
+| `network_unreachable` | `ENOTFOUND`, `EAI_AGAIN`, `ECONNREFUSED`, `ETIMEDOUT` |
+| `permission_denied` | `EACCES`, `EPERM` |
+| `entry_point_broken` | see scope note below |
+| `unrecognized` | fallback - still structured, never a raw crash |
+
+### `entry_point_broken` scope (deliberately minimal)
+Confirms the package's declared entry file exists on disk and, for a plain
+Node script, that importing it doesn't throw synchronously. This is a load
+smoke-check, NOT a protocol handshake. MCP servers speak JSON-RPC over stdio
+and don't have a `--version`-and-exit surface - actually starting one and
+checking for a working handshake is real estate owned by `scopewatch test
+<server>` and the diagnostics module (Phase I), not Phase D. Documented
+directly in the code (`errors.ts`) so this boundary isn't accidentally
+"improved" into protocol testing later.
+
+### Prerequisite detection is separate from install, not discovered mid-install
+`checkPrerequisites()` is standalone and independently testable. `scopewatch
+doctor` calls it directly; `installPackage()` calls it FIRST, before any npm
+invocation - a bad environment is reported immediately, never discovered
+after a partial install. Verified by a test asserting npm is never invoked
+when the prerequisite check fails.
+
+### Testing split: offline unit tests vs. network-dependent e2e
+- `packages/install-adapters/test/`: fully offline, fixture-based (captured
+  real npm stderr per failure category, injected command runners for
+  Node/npm detection). Verified offline by running with a broken proxy
+  configured (`HTTP_PROXY=http://127.0.0.1:1`) - all 22 tests still pass,
+  confirming zero real network or subprocess calls happen in this suite.
+- `e2e/install-adapter-real-npm.test.ts`: real npm install against the real
+  registry (using `ms`, a small stable zero-dep package, purely as an install
+  target). Deliberately excluded from `npm test`'s glob
+  (`packages/**/test/**`); runs via `npm run test:e2e` on a separate,
+  less-frequent cadence (pre-release / scheduled CI), not on every push.
+  Found and correctly handled a real environmental fact during
+  implementation: this dev machine runs Node 21.7.1, below the 22.0.0
+  floor - the e2e prerequisite test asserts this honestly rather than masking
+  it, and the install/categorization tests call npm directly (bypassing the
+  prerequisite gate) since they exist to test real registry behavior, not
+  re-litigate this machine's Node version.
+
+Full suite: 59/59 passing (37 Phase A/B/C + 22 Phase D offline). e2e: 4/4
+passing against the real npm registry.
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅ complete)  
+**Commits:** 7 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase D install adapter)

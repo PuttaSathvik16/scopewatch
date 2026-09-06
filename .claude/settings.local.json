@@ -8,7 +8,8 @@
       "Bash(node -e ' *)",
       "Bash(node --import tsx manual-check2.mjs)",
       "Bash(rm -f \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check.mjs\" \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check2.mjs\" /tmp/scopewatch-manual-check*.db*)",
-      "Bash(node --import tsx --test packages/state/test/lifecycle.test.ts)"
+      "Bash(node --import tsx --test packages/state/test/lifecycle.test.ts)",
+      "Bash(npm --version)"
     ],
     "additionalDirectories": [
       "/tmp"

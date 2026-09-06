@@ -11,7 +11,15 @@ import {
 import { computeDiff, renderDiff, extractSummary } from '@scopewatch/diff-engine';
 import type { ServerManifest } from '@scopewatch/manifest';
 import { checkPrerequisites, installPackage, checkEntryPoint, type InstallRunner, type CommandRunner } from '@scopewatch/install-adapters';
-import { activateForClient, deactivateForClient } from '@scopewatch/client-adapters';
+import {
+  activateForClient,
+  deactivateForClient,
+  detectAllDrift,
+  resolveDriftEntry,
+  validResolutionsFor,
+  type DriftEntry,
+  type DriftResolution,
+} from '@scopewatch/client-adapters';
 import { storeSecret, retrieveSecret, promptSecret, secretRef } from '@scopewatch/secrets';
 import { searchServers, getServerInfo, type FetchFn, type RegistryServer } from './registry-client.js';
 import { mcpHandshakeAndListTools, type SpawnFn as McpSpawnFn } from './mcp-client.js';
@@ -286,10 +294,55 @@ export function cmdStatus(deps: CliDeps) {
   return rows;
 }
 
-// --- drift (stub) ---
+// --- drift ---
 
-export function cmdDrift() {
-  return { ok: true as const, message: 'drift detection is not yet implemented (Phase H). No client configs were checked.' };
+/** Read-only: reports drift across every owned config entry, on every activated client. Never writes anything. */
+export function cmdDrift(deps: CliDeps) {
+  return detectAllDrift(deps.db);
+}
+
+/**
+ * Interactive: reports drift, then for each drifted (non-unchanged) entry,
+ * prompts for a resolution and applies it immediately - this is what
+ * actually "offers a merge" per Journey C, not just a report with no way to
+ * act on it. `promptChoice` is injectable for testing; the real CLI wires
+ * it to an actual terminal prompt.
+ */
+export async function cmdDriftResolve(
+  deps: CliDeps & { promptChoice?: (entry: DriftEntry) => Promise<DriftResolution> }
+): Promise<{ ok: true; resolved: number; skipped: number } | { ok: false; error: unknown }> {
+  const results = detectAllDrift(deps.db);
+  let resolved = 0;
+  let skipped = 0;
+
+  for (const { result } of results) {
+    if (!result.ok) {
+      // malformed_config_structure: cannot safely offer a resolution for this pair at all.
+      skipped++;
+      continue;
+    }
+    const entry = result.entry;
+    if (entry.status === 'unchanged') continue;
+
+    const choice = deps.promptChoice
+      ? await deps.promptChoice(entry)
+      : ('skip' as DriftResolution); // no interactive prompt available -> safest default is skip, never guess
+
+    if (!validResolutionsFor(entry.status).includes(choice)) {
+      skipped++;
+      continue;
+    }
+
+    const applied = resolveDriftEntry(deps.db, entry, choice);
+    if (applied.ok) {
+      if (choice !== 'skip') resolved++;
+      else skipped++;
+    } else {
+      skipped++;
+    }
+  }
+
+  return { ok: true, resolved, skipped };
 }
 
 // --- deactivate (used internally by rollback flows / not a top-level command yet, kept for completeness) ---

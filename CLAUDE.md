@@ -871,5 +871,107 @@ a clean rebuild, real macOS keychain confirmed clean.
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅ complete)  
-**Commits:** 18 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix)
+## Phase H: Client Drift Reconciler ✅ (2026-09-06)
+
+### Design correction before implementation: snapshot, not regeneration
+
+Original sketch compared the live config against a value *regenerated* from
+the current manifest + `activateForClient`'s logic at drift-check time.
+Caught before implementation: this couples detection's correctness to that
+generation logic staying byte-for-byte stable forever - any future
+refactor, bug fix, or formatting change would make every previously-
+activated server look "drifted" the next time anyone ran `drift`, with no
+real drift having occurred. **Fixed**: added `last_written_value` to
+`client_config_ownership` (migration 004), storing the exact serialized
+entry at the moment `activateForClient` writes it. Detection compares the
+live file against *that stored snapshot* - never a freshly regenerated
+value - making it immune to any future change in how config gets
+generated.
+
+### A second, more serious issue found in the same review: the naive backfill was a data-loss hazard
+
+Initial migration design backfilled pre-existing ownership rows with
+`last_written_value = '{}'`, reasoning "it'll show as drifted, which is
+honest." Traced through what actually happens next: a user sees that
+falsely-flagged entry, picks "restore Scopewatch's version," and
+`JSON.parse('{}')` gets written into their file - **silently blanking out
+their real, working server configuration**, because the "snapshot" being
+restored was never a real historical value. Not a cosmetic false positive;
+a destructive action the design would have made available with no guard.
+
+**Fixed**: `last_written_value` is nullable; migration 004 backfills `NULL`
+for pre-existing rows (a pure DB transformation - no filesystem access from
+inside the migration). A fourth `DriftStatus`, `'unverifiable'`, is
+reported for `NULL`-snapshot rows - distinct from `'changed'`, which would
+imply a real prior value exists to compare against or restore. `resolveDriftEntry`
+**refuses `'restore'` entirely for `'unverifiable'`** with a clear error;
+the only valid resolution is `'keep'` (adopt the current live value - or,
+if the key is also absent, transition to `disabled` - as the new baseline).
+The interactive CLI prompt only ever offers resolutions `validResolutionsFor()`
+actually allows, so `'restore'` is never presented as a choice for this
+status in the first place.
+
+### Detection: four statuses (`packages/client-adapters/src/drift.ts`)
+
+`unchanged` / `changed` / `missing` / `unverifiable`, per owned config key,
+per `(server_id, client_id)` pair. Validates the file's top-level structure
+*before* attempting per-key comparison - unparseable JSON or a restructured
+`mcpServers` (not an object) surfaces as `malformed_config_structure`, a
+distinct, more severe error category, never forced into the four-status
+model.
+
+### Resolution: two real commands, not detection-with-resolution-deferred
+
+Committed to building both now, not leaving resolution as a hypothetical
+future flag - Journey C's "offered a merge, not a silent overwrite"
+requires an actual path to act on what's found, in this phase:
+- **`scopewatch drift --all-clients`** - read-only report, no writes.
+- **`scopewatch drift --resolve`** - interactively prompts keep/restore/skip
+  per drifted entry and applies immediately, including the real
+  `active → disabled` lifecycle transition (via `LifecycleEngine`'s actual
+  intent/confirm mechanism, not a raw `UPDATE`) when a user confirms a
+  removed entry should stay removed - otherwise `status` would report
+  `active` for a server no longer actually wired into the client at all.
+
+Restoration reuses the exact `mergeConfig`/`writeConfigFile` pipeline
+`activateForClient` already built and tested - not a second parallel
+implementation of "write this key without touching others."
+
+### Mutation-tested, per the established standard
+
+Broke `restoreEntry` into a naive full-file overwrite (discarding
+everything else) and reran the suite: the `changed + restore` fixture
+correctly failed with "unrelated human entry must survive a restore," not
+a generic crash. Restored, confirmed green.
+
+### Fixture matrix (15 tests: `drift.test.ts` ×8, `drift-resolve.test.ts` ×7)
+
+All three real detection cases plus the explicitly-required `unverifiable`
+case (simulating a pre-migration row directly, confirming it reports
+`unverifiable` not `changed`); a human-added unrelated entry proven
+untouched; both malformed-structure paths (unparseable JSON, non-object
+`mcpServers`); independent per-client detection across Claude Code and
+Cursor for one server; every resolution combination including the
+mutation-tested restore, the real `active→disabled` transition, and the
+dedicated `unverifiable`-restore-refused fixture confirming the real file
+on disk survives a refused restore attempt untouched.
+
+### Exit check: Journey C run as one real scripted sequence, not isolated units
+
+`journey-c.test.ts` (2 tests): activate for real → a human hand-edits the
+*real* file on disk (not a simulated in-memory change) → `drift
+--all-clients`-equivalent report finds the real mismatch and confirms
+reporting alone wrote nothing → `drift --resolve`-equivalent applies the
+user's real choice (`restore` in one test, `keep`-the-removal in the other)
+→ confirms the real file reflects the choice, the unrelated human entry
+survived the entire journey, and re-running detection afterward reports
+`unchanged` - the loop actually closes, not just one pass through it.
+
+Full suite: 173/173 passing (156 prior + 15 detection/resolution + 2
+Journey C), verified offline, from a clean rebuild, and dist-smoke
+re-confirmed meaningful via the established delete-dist technique.
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅ complete)  
+**Commits:** 19 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler)

@@ -584,7 +584,46 @@ failure by the test runner). Restored and confirmed green.
 Full suite: 123/123 passing (102 prior + 21 new: config-writer,
 run-wrapper unit + real-process, activate, dist-smoke).
 
+### MVP acceptance criterion, proven end-to-end (not inferred from components)
+
+Section 19 of the brief requires: *"The same server definition activates
+correctly for both supported clients without duplicating credentials or
+hand-editing."* The component-level tests above proved the pieces work;
+they didn't prove the whole chain, for both clients, from one manifest.
+Closed with `golden-path-both-clients.test.ts` (3 tests):
+
+1. **Fail-loud secret retrieval, confirmed already real** (not newly added -
+   `run-wrapper.test.ts`'s existing test declares `MISSING_TOKEN` in a
+   manifest and never calls `storeSecret` for it, so the failure comes from
+   a genuine real-keychain "not found" lookup, not a mock).
+2. **One manifest, both clients, real launch.** Activates `golden-path-server`
+   on both Claude Code and Cursor from one manifest; confirms each client's
+   config file exists at its documented path in its documented shape, the
+   ownership table tracks each independently, and - critically - reads the
+   exact `(server_id, client_id)` args back OUT of each client's config file
+   and feeds them into `runWrapper`, proving the specific args a real client
+   would invoke actually launch the real fixture successfully, for both
+   clients independently (not one mechanism verified once and assumed to
+   generalize to the second).
+3. **Secret sharing, not duplication, proven directly.** Stores exactly one
+   keychain entry, confirms via a real `security find-generic-password` call
+   that exactly one entry exists for that reference, then drives both
+   clients' wrapper invocations and confirms both retrieve the identical
+   value. `secretRef()` takes no `client_id` parameter at all, so a second
+   client's activation cannot mint a second keychain entry even in
+   principle - proven here, not just inferred from the reference format.
+
+**Mutation-tested this too:** temporarily dropped `injectResult.env` from the
+spawned process's env (secret silently never injected) and reran - both the
+launch test and the secret-sharing test failed with specific assertions
+("the shared secret must be injected into the spawned env", "Claude Code's
+wrapper invocation retrieved the shared value"), not a generic crash.
+Restored, confirmed green, confirmed the real macOS keychain was left clean
+of test artifacts.
+
+Full suite: 126/126 passing (123 prior + 3 new).
+
 ---
 
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete)  
-**Commits:** 12 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters)
+**Commits:** 13 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof)

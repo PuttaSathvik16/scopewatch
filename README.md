@@ -145,9 +145,17 @@ these requirements.
 
 ## Quickstart
 
-```bash
-npm install -g scopewatch
+Scopewatch isn't published to npm yet — install it from source:
 
+```bash
+git clone https://github.com/PuttaSathvik16/scopewatch.git
+cd scopewatch
+npm install
+npm run build
+npm link --workspace=apps/cli   # makes the `scopewatch` command available globally
+```
+
+```bash
 scopewatch doctor                    # verify Node/npm meet requirements
 scopewatch search <term>             # find a server in the MCP registry
 scopewatch info <server>             # show details for a specific server

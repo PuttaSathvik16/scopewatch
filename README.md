@@ -1,5 +1,7 @@
 # Scopewatch
 
+[![CI](https://github.com/PuttaSathvik16/scopewatch/actions/workflows/ci.yml/badge.svg)](https://github.com/PuttaSathvik16/scopewatch/actions/workflows/ci.yml)
+
 A local-first, CLI-only trust layer for MCP servers and AI agent tools.
 
 On every install and update, Scopewatch produces a correct, plain-language
@@ -22,6 +24,7 @@ entire product. Everything else in this repository exists to support it.
 - [Project structure](#project-structure)
 - [Documentation](#documentation)
 - [Development](#development)
+- [Testing](#testing)
 - [Security model, in short](#security-model-in-short)
 - [License](#license)
 
@@ -245,6 +248,42 @@ Contribution notes:
   useful context before touching `diff-engine`, `secrets`, or
   `client-adapters` in particular, since each has non-obvious constraints
   documented there.
+
+## Testing
+
+CI runs the full suite on every push and pull request, across all three
+platforms Scopewatch claims to support — not just the fast path:
+
+| Job | What it verifies |
+|---|---|
+| `test (ubuntu-latest)` | Full suite against a real, provisioned Secret Service (gnome-keyring) — the Linux keychain path is genuinely exercised, not skipped |
+| `test (windows-latest)` | Full suite on real Windows, including the PowerShell-backed Credential Manager path |
+| `test (macos-latest)` | Full suite against this project's primary development platform, including the real macOS keychain |
+| `test-e2e` | Real npm registry install, on a separate, less frequent cadence |
+
+A few things this suite specifically guards against, each because a real
+bug slipped through before the check existed:
+
+- **`dist-smoke` tests per package** — each package is imported by its
+  published name (forcing real `dist/` resolution through its actual
+  `package.json` `exports`/`main`), not by relative path to `.ts` source.
+  This is what would have caught Phase D's schema-files-never-copied-to-
+  `dist/` bug before it shipped.
+- **A real, spawned-subprocess Journey A test** — the actual compiled CLI
+  binary, invoked with real argv/stdio/env, through
+  `install → test → activate → update → diff`. Direct function-call tests
+  had previously let the entire `update`/`diff`/`approve` command surface
+  ship unregistered in the CLI's entry point without anyone noticing; this
+  is the layer that would catch that class of gap again.
+- **Platform-specific keychain tests are gated to the platform they
+  actually exercise** (`security` only runs where `security` exists), so a
+  test failing on the "wrong" OS is a real signal, not noise to ignore.
+
+Windows real-subprocess coverage for the Journey A test above is a known,
+stated gap (its isolation strategy — POSIX shell shims, a Python-`pty`-based
+pseudo-terminal — is POSIX-only by construction); the underlying commands
+it exercises are still fully proven on macOS and Linux, and this is
+documented in [CLAUDE.md](CLAUDE.md) rather than silently skipped.
 
 ## Security model, in short
 

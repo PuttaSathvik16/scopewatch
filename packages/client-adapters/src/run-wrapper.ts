@@ -4,8 +4,14 @@ import { injectSecrets, secretRef } from '@scopewatch/secrets';
 
 export type SpawnFn = (command: string, args: string[], options: { env: NodeJS.ProcessEnv }) => ChildProcess;
 
+// command is frequently 'npx', a .cmd file on Windows - Node's automatic
+// bare-command PATH resolution only finds real executables (.exe/.com)
+// without shell: true. See apps/cli/src/real-runners.ts for the full
+// account of this bug class; this is the ACTUAL runtime wrapper a real
+// client (Claude Code/Cursor) spawns to launch a real MCP server, so this
+// is the single most consequential of the four spots this bug was found in.
 const defaultSpawn: SpawnFn = (command, args, options) =>
-  spawn(command, args, { env: options.env, stdio: 'inherit' });
+  spawn(command, args, { env: options.env, stdio: 'inherit', shell: process.platform === 'win32' });
 
 export type RunWrapperDeps = {
   db: SqliteDatabase;

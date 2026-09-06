@@ -9,8 +9,12 @@ export type PrerequisiteCheckResult =
 /** Injected for testability - avoids spawning real processes in unit tests. */
 export type CommandRunner = (command: string, args: string[]) => string;
 
+// npm/npx ship as .cmd files on Windows, and Node's automatic bare-command
+// PATH resolution only searches for real executables (.exe/.com) without
+// shell: true - found via a real Windows CI run, see apps/cli/src/real-
+// runners.ts's identical fix for the full account of how this was missed.
 const defaultRunner: CommandRunner = (command, args) =>
-  execFileSync(command, args, { encoding: 'utf-8', windowsHide: true });
+  execFileSync(command, args, { encoding: 'utf-8', windowsHide: true, shell: process.platform === 'win32' });
 
 /**
  * Check that Node.js and npm are present and that Node meets the minimum version.

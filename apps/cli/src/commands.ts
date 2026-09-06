@@ -273,9 +273,24 @@ export function cmdApproveUpdate(server_id: string, client_id: string, newManife
 
 // --- diff ---
 
-export function cmdDiff(diffId: number, deps: CliDeps) {
-  const diffObj = getDiffObject(deps.db, diffId);
-  if (!diffObj) return { ok: false as const, error: new Error(`No diff found with id ${diffId}`) };
+/**
+ * `scopewatch diff <server>`: re-shows the last diff computed for this
+ * (server, client) pair, resolved via lockfile_entries.last_diff_id -
+ * matches the brief's actual CLI signature (a server name, not a raw
+ * numeric diff id, which is an internal implementation detail no CLI user
+ * would ever type).
+ */
+export function cmdDiff(server_id: string, client_id: string, deps: CliDeps) {
+  const row = deps.db
+    .prepare('SELECT last_diff_id FROM lockfile_entries WHERE server_id = ? AND client_id = ?')
+    .get(server_id, client_id) as { last_diff_id: number | null } | undefined;
+
+  if (!row || row.last_diff_id === null) {
+    return { ok: false as const, error: new Error(`No diff on record for '${server_id}' on '${client_id}'.`) };
+  }
+
+  const diffObj = getDiffObject(deps.db, row.last_diff_id);
+  if (!diffObj) return { ok: false as const, error: new Error(`No diff found with id ${row.last_diff_id}`) };
   return { ok: true as const, rendered: renderDiff(diffObj as any) };
 }
 

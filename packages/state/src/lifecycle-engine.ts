@@ -220,7 +220,7 @@ export class LifecycleEngine {
            ON CONFLICT(server_id, client_id) DO UPDATE SET
              manifest_id = excluded.manifest_id,
              state = excluded.state,
-             last_diff_id = excluded.last_diff_id,
+             last_diff_id = COALESCE(excluded.last_diff_id, lockfile_entries.last_diff_id),
              activated_at = CASE WHEN excluded.state = 'active' THEN excluded.updated_at ELSE lockfile_entries.activated_at END,
              updated_at = excluded.updated_at`
         )

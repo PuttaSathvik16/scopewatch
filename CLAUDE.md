@@ -1081,5 +1081,96 @@ GitHub remote.
 
 ---
 
+## Post-acceptance: real-subprocess Journey A, and a real bug it found that no prior test caught
+
+Every prior "end-to-end" claim (Journey A/B/C, the golden-path tests) called
+`cmdX()` functions directly - which is exactly the blind spot that let the
+whole `update`/`diff`/`approve` command surface ship unregistered in
+`main.ts` undetected (see the command-wiring audit above). Closing that gap
+in `main.ts` proved the functions were reachable; it didn't prove invoking
+them through a real terminal, with real stdio and a real subprocess
+boundary, actually works. Built
+`apps/cli/test/journey-a-real-subprocess.test.ts`: spawns the actual
+compiled `apps/cli/dist/main.js` as a real child process - real argv, real
+env, real stdio - through `doctor → search → info → install → test →
+activate → update --check → update → diff`, isolated via
+`SCOPEWATCH_STATE_DIR`/`SCOPEWATCH_REGISTRY_URL` env overrides and a shimmed
+`node`/`npm`/`npx` PATH (the same DI-at-the-process-boundary philosophy as
+`scopewatch-run` and `minimalSpawnEnv`).
+
+**Three real bugs found, each only reachable through a genuine subprocess
+boundary:**
+
+1. **A deadlock, not a slow test.** The mock HTTP registry server used by
+   the test lives in the SAME process as the test itself (not a separate
+   one). `execFileSync` blocks that process's event loop synchronously while
+   waiting for the child - including the event loop the mock server needs
+   to ever answer the child's request. Every network-touching command
+   (`search` was first) hung for exactly the configured timeout with an
+   empty, uninformative error. Fixed by switching to async `execFile`.
+2. **`promptSecret()`'s TTY guard, working exactly as designed, colliding
+   with the test's own plumbing.** `install`'s secret prompt correctly
+   refuses non-TTY stdin (a deliberate Phase D guarantee). A real subprocess
+   test can't code-inject around this the way a direct `cmdInstall()` call
+   can - and weakening the guard with an env-var bypass was rejected as
+   reopening the exact class of risk it exists to prevent. Fixed by giving
+   that one step a REAL pseudo-terminal via Python's `pty.spawn` (`script`
+   was tried first and rejected: it needs to `tcgetattr` its own inherited
+   stdin to save/restore terminal modes, which fails with "Operation not
+   supported on socket" against the socketpair-backed pipes
+   `child_process.spawn` uses on macOS - true regardless of `node:test`,
+   reproduced identically from a plain top-level script).
+   Discovered a second layer under the same guard while wiring the pty:
+   with a REAL controlling terminal present, macOS's `security` binary
+   (shelled out to by `storeSecret`) bypasses whatever Scopewatch's own code
+   pipes to it and reads its OWN confirm+retype password prompt directly
+   from `/dev/tty` - a deliberate, non-scriptable macOS behavior. The test
+   writes the secret value three times, spaced out, to satisfy the CLI's own
+   readline prompt plus `security`'s separate confirm+retype - confirmed by
+   manual reproduction that one write hangs forever exactly at "retype
+   password for new item:".
+3. **The real, previously-undetected lifecycle-engine bug.** With both of
+   the above fixed, the real subprocess run got all the way to `diff` and
+   failed for real, in under 4 seconds - no hang, an honest error: `No diff
+   on record for 'server' on 'client'`. Root cause in
+   `packages/state/src/lifecycle-engine.ts`'s `confirmTransition()`:
+   `cmdUpdate`'s transition correctly stores the new diff's id via
+   `startTransition(..., diffId)`, but `cmdApproveUpdate`'s SEPARATE
+   `updated → active` transition calls `startTransition(..., null)` -  no
+   new diff is computed at approval time, so it passes `null`. The
+   `lockfile_entries` upsert set `last_diff_id = excluded.last_diff_id`
+   unconditionally, so approving an update **immediately erased the diff
+   record for the very update just approved** - `scopewatch diff <server>`
+   would 404 right after the happy path a real user would take. Every
+   `journey-a.test.ts` run before this missed it because it calls
+   `cmdDiff()` immediately after `cmdUpdate()`, never after
+   `cmdApproveUpdate()`, in the exact sequence a real user's shell actually
+   runs (`update` prompts for approval and activates inline - `diff` is
+   naturally invoked afterward, if at all). Fixed with
+   `COALESCE(excluded.last_diff_id, lockfile_entries.last_diff_id)`: a
+   transition with a genuinely new diff still overwrites; a transition with
+   none (like approval) preserves whatever was already on record. Verified
+   against the full 184-test suite (zero regressions) and re-confirmed
+   `journey-a.test.ts` (the direct-call version) still passes - it happened
+   to never exercise the exact order that exposed this.
+
+Re-ran the real-subprocess test twice after the fix (both green, ~4s each)
+and confirmed both times: no leaked background process (an earlier debugging
+round found up to six stale `node --test` processes from prior FAILED runs
+piling up, because the mock server was never closed on a failure path - also
+fixed, via a `currentRegistryServer` reference closed unconditionally in
+`finally`, plus a `{ timeout: 60000 }` hard cap on the test itself so a
+future hang self-terminates instead of leaking silently), and no leftover
+keychain entry (`security dump-keychain` confirmed clean both times).
+
+This is the strongest evidence this build has produced for acceptance
+criterion 3 (correct diff shown before activation) and 6 (updates
+version-pinned, diff shown, rollback works): not diff-engine unit fixtures,
+not direct function calls, but the actual compiled artifact, run the way a
+real user's shell would run it, catching a bug that every earlier layer of
+testing - including three prior "end-to-end" journeys - missed.
+
+---
+
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅, Phase I ✅ complete - MVP acceptance: 8/9, 9th blocked on external infra)  
 **Commits:** 21 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler + Phase I diagnostics/docs + Phase I command-wiring audit)

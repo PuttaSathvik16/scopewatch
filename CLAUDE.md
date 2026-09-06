@@ -751,5 +751,75 @@ narrowing, not new fixtures).
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete; Phase G in progress - capability inference done and hardened, CLI wiring next)  
-**Commits:** 16 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing)
+## Phase G: CLI Surface ✅ (2026-09-06)
+
+New `apps/cli` (`@scopewatch/cli`, bin: `scopewatch`), wiring all commands to
+existing modules per the approved design. Most commands are thin; two
+required genuinely new logic:
+
+- **Registry client** (`registry-client.ts`): the live-verified
+  `registry.modelcontextprotocol.io` endpoints from the design phase -
+  `GET /v0.1/servers?search=` and `GET /v0.1/servers/{url-encoded name}/versions/{version}`
+  - with `network_unreachable`/`server_not_found`/`registry_error`
+  categorization, same pattern as Phase E's install errors.
+- **`mcp-client.ts`**: the baseline real JSON-RPC-over-stdio handshake
+  (`initialize` → `tools/list`), shared by `install` (to get real tool data
+  for capability inference) and `test`. Four categorized failures:
+  `spawn_failed`, `handshake_timeout`, `malformed_response`,
+  `protocol_error`. Deliberately minimal per the design - sanitized log
+  capture and deeper failure taxonomies are Phase I's job.
+
+`install` orchestrates the full pipeline for the first time: registry fetch
+→ manifest built with **real** inferred capabilities (via
+`@scopewatch/capability-inference`, from a real handshake against the
+freshly-installed package - not a placeholder) → lifecycle transitions
+through `discovered → reviewed → installed → configured → validated` →
+secret prompting for each required credential. `activate` does
+`validated → active` + writes the real client config.
+`update`/`update --check`/`diff`/`rollback`/`status` wire directly to
+`@scopewatch/diff-engine` and `@scopewatch/state` as mapped. `drift` is the
+approved stub (reports "not yet implemented," never a crash).
+
+### The exit check found a real integration bug immediately
+
+Built Journey A as one real scripted sequence (`journey-a.test.ts`) against
+a fixtured registry and a fixtured-but-protocol-real MCP server (speaks
+actual JSON-RPC over stdio, not a mock) - `search → info → install → test →
+activate → update --check → update → diff → approve` - not isolated
+per-command unit tests. First run failed immediately:
+
+`install`'s handshake call passed `{}` as the child process's `env`,
+stripping `PATH` entirely - so `node` (or `npx`) couldn't be resolved via
+PATH lookup, `spawn_failed` with `ENOENT`. Every phase-level test up to
+this point either used a fully-injected fake spawn (no real env dependency)
+or ran commands directly with `process.env` already correctly threaded
+through by the caller - `install`'s own new orchestration code was the
+first place this specific path (env passed into a nested real-process
+spawn several layers down) was ever actually exercised end-to-end. Fixed
+by threading `process.env` through at all three call sites
+(`mcpHandshakeAndListTools` in `install`, `test`, and `update`). Exactly
+the kind of integration gap the exit check exists to catch before Phase H
+builds more on top of it.
+
+After the fix, Journey A passes with real, checkable state at every step:
+real inferred capabilities in the built manifest (`read_record`→`read`,
+`write_record`→`write`, both `provenance: 'inferred'`), the real secret
+prompt firing and the value landing in the real macOS keychain, lifecycle
+state advancing to exactly `validated` after install (not further), a real
+`.mcp.json` file written on `activate`, a real diff (`computeDiff` against
+two real inferred manifests) correctly flagging a genuinely new destructive
+tool as `newly_destructive: true` / `riskLevel: 'high'` on update, state
+correctly stopping at `updated` (never auto-activating) until the explicit
+approve step moves it to `active`.
+
+Full suite: 150/150 passing (139 prior + 1 Journey A + 5 registry-client +
+5 mcp-client), verified offline (broken-proxy check) and from a clean
+rebuild. Also smoke-tested the compiled `scopewatch` binary directly
+(`--help`, `doctor`) - `doctor` correctly and honestly reports this dev
+machine's Node 21.7.1 as below the 22.0.0 floor, the same real finding as
+Phase E, not silently worked around.
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅ complete)  
+**Commits:** 17 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface)

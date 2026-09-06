@@ -1,0 +1,29 @@
+{
+  "name": "@scopewatch/cli",
+  "version": "0.0.1",
+  "description": "Scopewatch CLI: search, install, test, activate, update, diff, rollback, status",
+  "type": "module",
+  "bin": {
+    "scopewatch": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc && node -e \"try{require('fs').chmodSync('dist/main.js',0o755)}catch(e){}\"",
+    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@scopewatch/capability-inference": "0.0.1",
+    "@scopewatch/client-adapters": "0.0.1",
+    "@scopewatch/diff-engine": "0.0.1",
+    "@scopewatch/install-adapters": "0.0.1",
+    "@scopewatch/manifest": "0.0.1",
+    "@scopewatch/secrets": "0.0.1",
+    "@scopewatch/state": "0.0.1",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

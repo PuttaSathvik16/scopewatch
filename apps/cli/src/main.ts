@@ -96,6 +96,16 @@ program
   });
 
 program
+  .command('deactivate <server>')
+  .option('--client <client>', 'client', CLAUDE_CODE_CLIENT_ID)
+  .description('Remove a server from a client\'s config (never touches unrelated entries)')
+  .action(async (server: string, opts: { client: string }) => {
+    const result = await runCommand(() => cmds.cmdDeactivate(server, opts.client, { db: getDb() }));
+    console.log(result.ok ? 'Deactivated' : result.message);
+    if (!result.ok) process.exitCode = 1;
+  });
+
+program
   .command('status')
   .description('Show status of all installed servers')
   .action(() => {

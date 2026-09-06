@@ -625,5 +625,55 @@ Full suite: 126/126 passing (123 prior + 3 new).
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete)  
-**Commits:** 13 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof)
+## Phase G (in progress): Capability Inference ✅
+
+Before wiring the CLI, Phase G surfaced a real gap: no phase had built a way
+to turn a real MCP server's `tools/list` response into `CapabilityEntry[]`
+for the diff engine. The MCP registry API gives `environmentVariables` (maps
+to `SecretDeclaration`) but nothing resembling verbs/resources.
+
+**Design validated against real, live data before writing implementation
+code**: ran `@modelcontextprotocol/server-filesystem` for real via
+`npx`, performed a real MCP stdio JSON-RPC handshake, and captured its
+actual `tools/list` response (14 real tools, saved as
+`packages/capability-inference/test/fixtures/real-filesystem-server-tools.json`)
+- not invented examples. This surfaced that MCP tools can carry optional
+self-reported `annotations` (`readOnlyHint`, `destructiveHint`,
+`idempotentHint`) - a far stronger signal than description-keyword-matching
+alone.
+
+### Ruleset (`packages/capability-inference`, its own package with its own fixture matrix, matching `diff-engine`'s precedent)
+1. `destructiveHint:true` → destructive pool; keyword refines to `delete`/`execute`/`write` if found, **else defaults to `delete`** (not `write` - a deliberate reconsideration: `destructiveHint:true` is the server's own admission of real consequence, and defaulting to the mildest destructive option when genuinely uncertain contradicts the project's posture since Phase B of erring toward showing more risk, not less).
+2. `readOnlyHint:true` → non-destructive pool; keyword refines to `fetch` if found, else `read`.
+3. Both hints `false` → keyword wins if found, else `write`.
+4. No annotations at all → keyword wins if found, else conservative `execute` fallback.
+5. **Severity-override (applies universally, after 1-4)**: severity(read=0, fetch=1, send=1, write=2, delete=3, execute=3) - if keyword evidence is strictly more severe than the annotation-derived verb, keyword wins, with a warning recorded. A server's self-reported hint cannot silently suppress an alarming signal sitting in its own tool's name/description.
+6. **Contradiction flagging**: `destructiveHint:true && readOnlyHint:true` simultaneously is recorded as a warning regardless of resolution (destructive pool wins, but the self-contradiction is surfaced, not silently absorbed).
+
+`move`/`rename` deliberately excluded from the write-keyword list: a
+relocation both creates at the destination and vacates the source, closer
+to a delete-shaped effect at the origin than a confident write signal - so
+`move_file` (real tool, `destructiveHint:true`, no other keyword match)
+correctly falls through to the new delete default, not write.
+
+Resource inference scans **only** `inputSchema` parameter names/descriptions
+(`path`→`filesystem:*`, `repo`→`repo:*`, `url`→`http:*`, else the honest `*`
+wildcard) - deliberately not the tool's free-text description.
+
+### Three real bugs found and fixed via validation against real data (not invented edge cases)
+1. **Resource over-matching**: `list_allowed_directories`'s description casually mentions "nested **paths**" without the tool taking any path parameter - scanning the full description (not just schema properties) produced a falsely specific `filesystem:*` instead of the honest `*`. Fixed by scanning only parameter data.
+2. **Conjugation gap**: `\bdelete\b` does not match "**deletes**" (no word boundary between "delete" and the trailing "s") - a synthetic override-rule test failed because of this before it ever reached the interesting logic. Fixed with left-anchored stem matching for longer/distinctive words, exact whole-word matching retained for short/common words (`run`, `call`, `get`) that would otherwise false-positive on unrelated words (`runtime`, `callback`, `getter`).
+3. **Noun/verb ambiguity, found twice via real metadata boilerplate**: `read_text_file`'s "detailed error **messages**" false-triggered `send` (a stray `messag` stem); `get_file_info`'s "**creation** time" and "last **modified** time" - extremely common timestamp-field phrasing - false-triggered `write` via bare `creat`/`modif` stems. Both fixed by requiring exact conjugated verb forms for these specific words instead of a bare stem, since the noun/adjective usage ("creation time" as a field name) is far more common in real tool descriptions than the verb usage for these particular words.
+
+All three were only found because the ruleset was validated against a real,
+live server's real output before and during implementation - not because
+they were anticipated in the design pass.
+
+**Fixture matrix** (12 tests): all 9 real read-only tools, `write_file`/`edit_file` (real, destructive+write-keyword), `create_directory` (real, both-hints-false), `list_allowed_directories`'s wildcard-resource case (real, no path param), the `move_file` ambiguous case (real, documented reasoning in both code and test), the contradiction fixture (synthetic, both hints true), the override fixture (synthetic, declared-safe hint contradicted by a "permanently deletes" description), two no-annotations-at-all fixtures (pure keyword fallback, and genuine no-signal fallback), a provenance-tagging check across all real tools, and a snake_case tokenization regression test.
+
+Full suite: 139/139 passing (126 prior + 13 new: 12 inference tests + 1 dist-smoke).
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete; Phase G in progress - capability inference done, CLI wiring next)  
+**Commits:** 14 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference)

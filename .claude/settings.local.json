@@ -10,7 +10,9 @@
       "Bash(rm -f \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check.mjs\" \"/Users/puttasathvik/Downloads/portfolio/ Projects/scopewatch/manual-check2.mjs\" /tmp/scopewatch-manual-check*.db*)",
       "Bash(node --import tsx --test packages/state/test/lifecycle.test.ts)",
       "Bash(npm --version)",
-      "Bash(awk '/add-generic-password/{found=1} found{print} found && /^     [a-z-]+$/ && !/add-generic-password/{exit}')"
+      "Bash(awk '/add-generic-password/{found=1} found{print} found && /^     [a-z-]+$/ && !/add-generic-password/{exit}')",
+      "Bash(node /tmp/mcp-probe.mjs)",
+      "Bash(python3 -c ' *)"
     ],
     "additionalDirectories": [
       "/tmp"

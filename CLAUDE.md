@@ -143,9 +143,9 @@ All checks confirmed:
 
 ## Phase B: Capability Diff Engine ✅ (2026-09-06)
 
-Status: Complete. All 12 fixture pairs pass with correct severity classification and rendering.
+Status: Complete. All 24 test cases passing (15 fixtures + 9 Phase A validation tests).
 
-Commits: 3 (Phase B scaffolding and fixtures, Phase B core algorithm, Phase B fixes)
+Commits: 4 (Phase B scaffolding → core algorithm → initial fixes → final items 2/4/5)
 
 ### Phase B Scope (P0: correctness of diff is higher than all other P0s)
 The diff engine is the product. It must:
@@ -211,15 +211,19 @@ Test asserts: `rendered_diff.includes(expected_summary)` — the human-readable 
   - [x] Risk level calculation (fixtures 01, 09) — correct mapping of new tools + new secrets to medium
 
 ### Phase B Exit Check ✅
-All 21 tests passing (12 Phase B fixtures + 9 Phase A validation tests). Diff output includes human-readable summaries without exposing underlying manifests.
+All 24 tests passing (15 Phase B fixtures + 9 Phase A validation tests). Diff output includes human-readable summaries without exposing underlying manifests.
 
 **Delivered:**
-- Correct severity classification at four tiers (Tier 1: categorical_acquisition, Tier 2: scope_expansion, Tier 3: scope_narrowing, Tier 4: cosmetic)
-- Scope change detection for (tool_id, verb) pairs with different resources
-- Complete tool removal detection and summarization
-- New tool identification with "New tool added:" phrasing
-- Risk level mapping (high/medium/low/none) aligned to threat model
-- Credential change tracking (new/reused/removed/required_changed)
+- **Correct severity classification** at four tiers (Tier 1: categorical_acquisition, Tier 2: scope_expansion, Tier 3: scope_narrowing, Tier 4: cosmetic)
+- **Scope change detection** using resource grammar containment check for (tool_id, verb) pairs (e.g., repo:owner/name → repo:owner/* properly detected as widening)
+- **Multi-resource handling** with proper scope subsumption (tool with access to discrete repos gains wildcard scope)
+- **Complete tool removal detection** with special-case summarization ("tool removed" vs individual capability removals)
+- **New tool identification** with `isNewTool` flag distinguishing brand-new tools from existing tools gaining new verbs
+- **Provenance-based confidence language**: declared capabilities render as "adds/has" vs inferred as "appears to add/have"
+- **Risk level mapping** (high/medium/low/none) per locked rule: new required secret = high (independent of capability tier)
+- **Credential change tracking** (new/reused/removed/required_changed) with threat-model-aligned risk assessment
+- **Multi-tier ordering** with Tier 1 rendered first, then 2/3/4 by severity, grouped by tool (proven by Fixture 15)
+- **Test assertion method** validates rendered plain-language output, not just structural fields (catches unreadable diffs)
 
 ## Deviations from Brief (none yet)
 

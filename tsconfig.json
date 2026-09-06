@@ -23,6 +23,7 @@
     { "path": "packages/diff-engine" },
     { "path": "packages/state" },
     { "path": "packages/install-adapters" },
-    { "path": "packages/secrets" }
+    { "path": "packages/secrets" },
+    { "path": "packages/client-adapters" }
   ]
 }

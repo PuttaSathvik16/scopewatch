@@ -1,0 +1,34 @@
+{
+  "name": "@scopewatch/client-adapters",
+  "version": "0.0.1",
+  "description": "Claude Code and Cursor client config adapters, ownership-tracked config writer, and the scopewatch-run wrapper",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "scopewatch-run": "./dist/bin/scopewatch-run.js"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc && node -e \"try{require('fs').chmodSync('dist/bin/scopewatch-run.js',0o755)}catch(e){}\"",
+    "test": "node --import tsx --test 'test/**/*.test.ts'",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@scopewatch/state": "0.0.1",
+    "@scopewatch/secrets": "0.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "tsx": "^4.19.0"
+  }
+}

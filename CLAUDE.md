@@ -449,5 +449,142 @@ keychain. Windows path implemented but unverified on real hardware.
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅ complete)  
-**Commits:** 9 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets)
+## Build-Verification Gap Fix (2026-09-06, pre-Phase F)
+
+Every test through Phase D ran via `tsx` directly against `.ts` source. The
+Phase D exit-check test was the first thing in this codebase to import
+another package by name as a real compiled dependency
+(`@scopewatch/state`), and that accident is what caught the missing
+`dist/schema/*.sql` bug - nothing had verified any package's `dist/` output
+before that. Confirmed `diff-engine` only ever imports `@scopewatch/manifest`
+via `import type`, erased at compile time - manifest's `dist/` had never
+been loaded by anything at all.
+
+**Fix:** added one `dist-smoke.test.ts` per package (manifest, diff-engine,
+state, install-adapters, secrets, and later client-adapters), each importing
+its target BY PACKAGE NAME - forcing real resolution through
+`package.json`'s `exports`/`main` into `dist/`, the same path any actual
+consumer takes. Verified each is not a tautology: temporarily renamed each
+package's `dist/` away in turn and confirmed the corresponding test (and
+only that one) fails to resolve; restored and confirmed green again.
+
+Also added `.github/workflows/ci.yml`: a build+test matrix across
+ubuntu-latest, windows-latest, and macos-latest, plus a separate `test-e2e`
+job. **This repository has no GitHub remote configured and `gh` is not
+authenticated in this environment - the workflow has not been executed.**
+It requires being pushed to a real GitHub repository before it produces any
+actual result. Until then, the Windows secrets keychain path (Phase D)
+remains verified only against documented Win32 API contracts, not a real
+Windows runner - this is a known, stated gap, not a silent one.
+
+Full suite: 102/102 passing (96 prior + 6 new dist-smoke tests).
+
+---
+
+## Phase F: Client Adapters ✅ (2026-09-06)
+
+**Clients confirmed: Claude Code and Cursor** (the brief's default).
+
+### Config formats and locations (cited from official docs, fetched live)
+- **Claude Code** ([code.claude.com/docs/en/mcp](https://code.claude.com/docs/en/mcp)): project scope is `.mcp.json` at project root - a dedicated, version-controllable file. User/local scope both live inside `~/.claude.json`, a single large file spanning every project on the machine plus non-MCP settings.
+- **Cursor** ([cursor.com/docs/context/mcp](https://cursor.com/docs/context/mcp)): project scope is `.cursor/mcp.json`; global scope is `~/.cursor/mcp.json` - both appear MCP-dedicated (no evidence of unrelated Cursor settings mixed in).
+- Both clients share an identical stdio shape: `{ "mcpServers": { "<name>": { "command", "args", "env" } } }`.
+
+### Stated limitation: v1 is project-scope only
+Scopewatch never writes to `~/.claude.json` or `~/.cursor/mcp.json` (global
+scope) - those files are shared across every project and, for Claude Code,
+mixed with unrelated settings, making them unnecessary risk for v1. **This
+is an explicit MVP narrowing, not an oversight**: a developer who wants a
+server available in every project they open has no path to that yet; they
+must activate per-project. State this in `docs/` under "what activation
+does and does not cover" so it's discovered from documentation, not
+confusion.
+
+### Ownership-tracked config writer (`client_config_ownership` table, migration 003)
+Rather than heuristically diffing file content to guess "did a human write
+this," Scopewatch tracks its own ownership explicitly: `(server_id,
+client_id) -> (config_file_path, config_key)`. `config_key` is `server_id`
+verbatim - no sanitization, since JSON object keys accept any string, and
+`(server_id, client_id)` is already unique in `lockfile_entries`, so no
+collision path exists by construction. A `UNIQUE(client_id,
+config_file_path, config_key)` constraint guards this as defense-in-depth
+regardless. On every write, `mergeConfig()` touches ONLY keys in the
+tracked ownership set for that file - any other key, human-authored or
+otherwise, is preserved untouched.
+
+**Scope note, stated explicitly in code and here:** this protects other
+people's keys from ever being touched (Phase F's job). It does **not**
+detect drift within a key Scopewatch itself owns - if a human hand-edits
+the `args` of an entry Scopewatch created, the ownership table still
+considers that key "ours" and the next write overwrites the hand-edit with
+zero detection. That's the client drift reconciler's job (**Phase H**), not
+this one.
+
+**Mutation-tested, not just asserted-clean:** temporarily replaced the real
+merge with a naive `{ mcpServers: updates }` overwrite (discarding all
+existing content) and re-ran the real suite - 6 of 12 tests correctly
+failed, each with a real, specific assertion (e.g. "other owned entries
+must survive," "unrelated entry untouched by the update"), not just "some
+test broke." Restored the fix and confirmed green again.
+
+### The `scopewatch-run` wrapper: bridging keychain secrets to a client-spawned process
+The real problem: Scopewatch's Phase D secret injection only works when
+Scopewatch itself spawns the process, but at actual runtime it's the
+CLIENT (Claude Code/Cursor) that spawns the MCP server, not Scopewatch.
+Generated configs point `command` at a small wrapper binary
+(`scopewatch-run`, shipped in `@scopewatch/client-adapters`'s `bin/`)
+instead of the real server directly - the wrapper resolves secrets from
+the keychain and injects them into its own child's env, so the value never
+touches the config file and the user never has to export anything into
+their shell.
+
+Three safety properties, each required before this wrapper could exist at
+all (identified during design review, not discovered after the fact):
+
+1. **State gate.** The wrapper runs OUTSIDE the CLI - the client invokes it
+   directly, often on its own restart. Without checking
+   `lockfile_entries.state` first, a client restart while an update sits
+   unapproved (state `updated`, diff shown but not confirmed) would
+   silently activate it the moment the client happens to respawn the
+   process - a direct violation of "every diff shown before activation,
+   never after." The wrapper refuses to launch unless state is exactly
+   `active`, deferring entirely to what the lifecycle engine has already
+   approved; it never independently decides what "current" means.
+2. **Fail loud on secret retrieval failure.** Never execs the real server
+   without its required secrets - a server launched without credentials
+   fails downstream in a confusing, vendor-specific way with no link back
+   to Scopewatch.
+3. **Process relationship.** `spawn` with `stdio: 'inherit'` (not manual
+   piping) - the real server shares the wrapper's stdio file descriptors
+   directly, so MCP's JSON-RPC stdio protocol traffic is never touched or
+   buffered by an extra hop, and this works identically on Windows and
+   POSIX via Node's cross-platform API. Signals sent to the wrapper are
+   forwarded to the child (`child.kill(sig)`); on the child's exit, the
+   wrapper propagates the exact same exit code, or - if the child died from
+   a signal - re-raises that same signal on itself so the parent sees
+   accurate signal-based termination status (the standard `tini`/`dumb-init`
+   pattern).
+
+**Verified for real, not just via mocked call-tracking:** a real-process
+test suite (`run-wrapper-real-process.test.ts`) spawns an actual local
+fixture script (`fake-mcp-server.mjs`) through the real
+`node:child_process.spawn` - not an injected fake - and confirms: exit
+code 0 and exit code 42 both propagate exactly; a real OS `SIGTERM` sent to
+the wrapper's registered handler causes the wrapper to call the real
+child's `kill('SIGTERM')`, and the fixture's own stdout output
+(`"fake-mcp-server received SIGTERM"`) proves the real child process
+genuinely received and handled a real OS signal, not a simulated one.
+
+**Mutation-tested the state gate too:** disabled the `if (state !==
+'active')` check, re-ran the state-gate test - it failed (the mutation
+caused `spawn` to be invoked when it should have been forbidden, hanging
+the test on a fake child that never emits `exit`, correctly flagged as a
+failure by the test runner). Restored and confirmed green.
+
+Full suite: 123/123 passing (102 prior + 21 new: config-writer,
+run-wrapper unit + real-process, activate, dist-smoke).
+
+---
+
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete)  
+**Commits:** 12 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters)

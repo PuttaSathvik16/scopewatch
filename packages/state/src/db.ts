@@ -1,12 +1,24 @@
 import Database from 'better-sqlite3';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCHEMA_DIR = join(__dirname, 'schema');
 
 export type SqliteDatabase = Database.Database;
+
+/**
+ * The single, machine-wide state database location. Local-first: one DB
+ * tracks every installed server across every project and client, not one
+ * per project. Creates the containing directory if it doesn't exist yet.
+ */
+export function defaultDbPath(): string {
+  const dir = join(homedir(), '.scopewatch');
+  mkdirSync(dir, { recursive: true });
+  return join(dir, 'state.db');
+}
 
 /**
  * Open (or create) a SQLite database at the given path and run any pending migrations.

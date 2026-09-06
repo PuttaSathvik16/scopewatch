@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Match Scopewatch's own stated minimum (see packages/install-adapters
+          # MIN_NODE_VERSION) so CI never validates against a Node version the
+          # product itself would refuse to run on.
+          node-version: '22.x'
+
+      - name: Install and build (clean, from scratch)
+        run: npm install
+
+      - name: Verify no stray compiled files landed outside dist/
+        shell: bash
+        run: |
+          STRAY=$(find packages -path "*/src/*.js" -o -path "*/src/*.d.ts" | grep -v node_modules || true)
+          if [ -n "$STRAY" ]; then
+            echo "Stray compiled files found outside dist/:"
+            echo "$STRAY"
+            exit 1
+          fi
+
+      - name: Verify every package's compiled dist/ actually works (not just source)
+        run: npm test
+        # npm test already includes each package's dist-smoke.test.ts, which
+        # imports by package name (forcing real dist/ resolution) rather than
+        # by relative path to source. This is the check that would have caught
+        # the Phase D packaging bug (state's schema/*.sql never copied to
+        # dist/) before it shipped, on every OS, not just whichever one a
+        # developer happened to be using locally.
+
+      - name: Run macOS/Linux keychain-backed secrets tests
+        if: matrix.os != 'windows-latest'
+        run: node --import tsx --test 'packages/secrets/test/*.test.ts'
+        # Already covered by `npm test` above; kept as an explicit named step
+        # so a keychain-specific failure is easy to spot in the CI UI without
+        # digging through the full suite's output.
+
+  test-e2e:
+    # Network-dependent real npm registry test - separate job, not blocking
+    # the fast matrix above, matching the project's own convention (see
+    # package.json's `test:e2e` script and CLAUDE.md's Phase E notes).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm install
+      - run: npm run test:e2e

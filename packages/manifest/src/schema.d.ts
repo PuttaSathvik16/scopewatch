@@ -29,13 +29,13 @@ export declare const SecretDeclarationSchema: z.ZodObject<{
     required: z.ZodBoolean;
     used_by: z.ZodArray<z.ZodString, "many">;
 }, "strip", z.ZodTypeAny, {
-    description: string;
     required: boolean;
+    description: string;
     id: string;
     used_by: string[];
 }, {
-    description: string;
     required: boolean;
+    description: string;
     id: string;
     used_by: string[];
 }>;
@@ -131,13 +131,13 @@ export declare const ServerManifestSchema: z.ZodObject<{
         required: z.ZodBoolean;
         used_by: z.ZodArray<z.ZodString, "many">;
     }, "strip", z.ZodTypeAny, {
-        description: string;
         required: boolean;
+        description: string;
         id: string;
         used_by: string[];
     }, {
-        description: string;
         required: boolean;
+        description: string;
         id: string;
         used_by: string[];
     }>, "many">;
@@ -175,8 +175,8 @@ export declare const ServerManifestSchema: z.ZodObject<{
         description?: string | undefined;
     }[];
     secrets: {
-        description: string;
         required: boolean;
+        description: string;
         id: string;
         used_by: string[];
     }[];
@@ -206,8 +206,8 @@ export declare const ServerManifestSchema: z.ZodObject<{
         description?: string | undefined;
     }[];
     secrets: {
-        description: string;
         required: boolean;
+        description: string;
         id: string;
         used_by: string[];
     }[];

@@ -178,27 +178,62 @@ async function runCli(args: string[], env: NodeJS.ProcessEnv, input?: string): P
  * all. Rather than weaken that guardrail with a test-only bypass flag (which
  * would reopen exactly the class of risk it exists to prevent, for any real
  * user who happened to set the same env var), this allocates a REAL
- * pseudo-terminal via macOS's `script` utility so the child genuinely sees
- * `stdin.isTTY === true`, then writes the secret into it - faithfully
- * exercising the real interactive path, not routing around it.
+ * pseudo-terminal so the child genuinely sees `stdin.isTTY === true`, then
+ * writes the secret into it - faithfully exercising the real interactive
+ * path, not routing around it.
+ *
+ * Uses Python's stdlib `pty.spawn` (via `os.openpty()`), not macOS's `script`
+ * utility: `script` needs to `tcgetattr` its OWN inherited stdin to save/
+ * restore terminal modes, which fails with "Operation not supported on
+ * socket" whenever it's given piped stdio (as `child_process.spawn` always
+ * provides on macOS, where pipes are socketpairs) rather than a real
+ * inherited terminal - true here regardless of node:test, reproduced
+ * identically from a plain top-level script. `pty.spawn` instead opens a
+ * fresh pty pair directly and is unaffected by what its own stdio is.
+ *
+ * Writes `input` THREE times, spaced out, not once: under a real controlling
+ * terminal (which this pty genuinely is), macOS's `security` binary - shelled
+ * out to by @scopewatch/secrets' storeSecret - bypasses whatever this test
+ * pipes to Scopewatch's own process entirely and reads its OWN confirm+retype
+ * password prompt directly from /dev/tty (a deliberate macOS behavior so
+ * password entry can't be scripted around; see Phase D's notes on `-w` with
+ * no value). Confirmed by manual reproduction: one write satisfies only the
+ * CLI's own readline prompt and then hangs forever on security's separate
+ * "password data for new item:" / "retype password for new item:" prompts;
+ * three writes (same value each time) clears all of them.
  */
 function runCliWithTty(args: string[], env: NodeJS.ProcessEnv, input: string): Promise<{ stdout: string; code: number }> {
   return new Promise((resolve) => {
-    const child = spawn('script', ['-q', '/dev/null', process.execPath, CLI_BIN, ...args], { env });
+    const pySnippet = `import pty, sys; sys.exit(pty.spawn([${JSON.stringify(process.execPath)}, ${JSON.stringify(CLI_BIN)}${args.map((a) => `, ${JSON.stringify(a)}`).join('')}]) >> 8)`;
+    const child = spawn('python3', ['-c', pySnippet], { env });
     let stdout = '';
     child.stdout.on('data', (chunk) => (stdout += chunk.toString()));
     child.stderr.on('data', (chunk) => (stdout += chunk.toString()));
-    child.stdin.write(input);
-    child.on('close', (code) => resolve({ stdout, code: code ?? 1 }));
+    const timers = [300, 1500, 2700].map((ms) => setTimeout(() => child.stdin.write(input), ms));
+    child.on('close', (code) => {
+      timers.forEach(clearTimeout);
+      resolve({ stdout, code: code ?? 1 });
+    });
   });
 }
 
-test('REAL SUBPROCESS Journey A: the actual compiled binary, run as a real user would, completes install through diff', async () => {
+test(
+  'REAL SUBPROCESS Journey A: the actual compiled binary, run as a real user would, completes install through diff',
+  { timeout: 60000 },
+  async () => {
   const stateDir = mkdtempSync(join(tmpdir(), 'scopewatch-real-state-'));
   const shimDir = makeShimBin();
   const secretReference = secretRef(SERVER_NAME, 'REAL_SUBPROCESS_TOKEN');
 
   const { server: registryServer, url: registryUrl } = await startMockRegistry('1.0.0');
+  // Tracks whichever mock registry server is currently live, so the finally
+  // block below can always close it - a prior run leaked every one of these
+  // on any failure before the mid-test registryServer.close() line, since
+  // that line is only reached on the happy path. A leaked in-process HTTP
+  // server keeps node:test's own process alive forever (never exits), which
+  // is exactly what silently piled up six stale processes across six failed
+  // runs earlier in this debugging session.
+  let currentRegistryServer: Server = registryServer;
 
   const baseEnv: NodeJS.ProcessEnv = {
     PATH: `${shimDir}${delimiter}${process.env.PATH}`,
@@ -262,6 +297,7 @@ test('REAL SUBPROCESS Journey A: the actual compiled binary, run as a real user 
     // --- update --check: real subprocess, real HTTP request against the mock registry (now serving v2.0.0) ---
     registryServer.close();
     const { server: registryServerV2, url: registryUrlV2 } = await startMockRegistry('2.0.0');
+    currentRegistryServer = registryServerV2;
     const envV2 = { ...baseEnv, SCOPEWATCH_REGISTRY_URL: registryUrlV2 };
 
     const updateCheckResult = await runCli(['update', SERVER_NAME, '--check'], envV2);
@@ -279,10 +315,11 @@ test('REAL SUBPROCESS Journey A: the actual compiled binary, run as a real user 
     strictEqual(diffResult.code, 0, `diff failed via the real binary. stderr: ${diffResult.stderr}`);
     ok(diffResult.stdout.length > 0, 'diff should produce real rendered output');
 
-    registryServerV2.close();
   } finally {
+    currentRegistryServer.close();
     deleteSecret(secretReference);
     rmSync(stateDir, { recursive: true, force: true });
     rmSync(shimDir, { recursive: true, force: true });
   }
-});
+  }
+);

@@ -32,10 +32,24 @@ export function renderDiff(diff: CapabilityDiff): string {
 
     const tier1ByTool = groupByTool(tier1);
     for (const [toolId, changes] of tier1ByTool) {
-      for (const change of changes) {
-        lines.push(`  • ${toolId}: added ${change.verb} access to ${change.resource ?? 'default'}`);
-        if (change.changeType === 'modified' && change.previousResource) {
-          lines.push(`    (previously read-only or scoped to ${change.previousResource})`);
+      // Check if this is a new tool (all capabilities added to a tool that didn't exist before)
+      const isNewTool = changes.every(c => c.isNewTool);
+
+      if (isNewTool && changes.length === 1) {
+        // Brand-new tool with single destructive capability
+        const change = changes[0]!;
+        lines.push(`  • New tool added: ${toolId} with ${change.verb} access to ${change.resource ?? 'default'}`);
+      } else if (isNewTool && changes.length > 1) {
+        // Brand-new tool with multiple capabilities
+        const verbs = changes.map(c => c.verb).join(', ');
+        lines.push(`  • New tool added: ${toolId} with ${verbs} access`);
+      } else {
+        // Existing tool gaining destructive capability
+        for (const change of changes) {
+          lines.push(`  • ${toolId}: now has ${change.verb} access to ${change.resource ?? 'default'}`);
+          if (change.previousResource) {
+            lines.push(`    (previously read-only or scoped to ${change.previousResource})`);
+          }
         }
       }
     }
@@ -63,17 +77,38 @@ export function renderDiff(diff: CapabilityDiff): string {
     ...diff.capabilities.removed.filter(c => c.severity === 'scope_narrowing'),
     ...diff.capabilities.modified.filter(c => c.severity === 'scope_narrowing'),
   ];
+
+  // Detect complete tool removals vs. capability removals
+  const allRemovals = diff.capabilities.removed.filter(c => c.severity === 'scope_narrowing');
+  const removedToolIds = new Set(allRemovals.map(c => c.tool_id));
+  const completelyRemovedTools = new Set<string>();
+
+  // A tool is completely removed if all its removals are in the removed list
+  // (not added back in any other way)
+  for (const toolId of removedToolIds) {
+    const hasAnyAddBack = diff.capabilities.added.some(c => c.tool_id === toolId);
+    if (!hasAnyAddBack) {
+      completelyRemovedTools.add(toolId);
+    }
+  }
+
   if (tier3.length > 0) {
     lines.push('✓ SCOPE NARROWED (safer):');
     const tier3ByTool = groupByTool(tier3);
     for (const [toolId, changes] of tier3ByTool) {
-      for (const change of changes) {
-        if (change.changeType === 'removed') {
-          lines.push(`  • ${toolId}: removed ${change.verb} access`);
-        } else {
-          lines.push(
-            `  • ${toolId}: ${change.verb} scope narrowed to ${change.resource ?? 'default'}`
-          );
+      if (completelyRemovedTools.has(toolId)) {
+        // Tool is entirely removed
+        lines.push(`  • ${toolId} tool removed`);
+      } else {
+        // Partial removal or scope narrowing
+        for (const change of changes) {
+          if (change.changeType === 'removed') {
+            lines.push(`  • ${toolId}: removed ${change.verb} access`);
+          } else {
+            lines.push(
+              `  • ${toolId}: ${change.verb} scope narrowed to ${change.resource ?? 'default'}`
+            );
+          }
         }
       }
     }
@@ -127,7 +162,7 @@ export function renderDiff(diff: CapabilityDiff): string {
 
     // New secrets
     for (const secret of diff.secrets.new) {
-      lines.push(`  • NEW REQUIRED: ${secret.secret_id} (${secret.description})`);
+      lines.push(`  • requires new credential: ${secret.secret_id} (${secret.description})`);
     }
 
     // Reused secrets
@@ -193,7 +228,7 @@ export function extractSummary(diff: CapabilityDiff): string {
 
     if (tier1Changes.length > 0) {
       const first = tier1Changes[0]!;
-      if (first.changeType === 'added') {
+      if (first.isNewTool) {
         return `New tool added: ${first.tool_id} with ${first.verb} access to ${first.resource ?? 'default'}.`;
       }
       return `${first.tool_id} now has ${first.verb} access to ${first.resource ?? 'default'} (previously read-only).`;
@@ -206,12 +241,26 @@ export function extractSummary(diff: CapabilityDiff): string {
     return `${first.tool_id} now has ${first.verb} access to ${first.resource ?? 'default'} (previously scoped to ${first.previousResource ?? 'default'}).`;
   }
 
+  const allRemovals = diff.capabilities.removed.filter(c => c.severity === 'scope_narrowing');
+  const removedToolIds = new Set(allRemovals.map(c => c.tool_id));
+  const completelyRemovedTools = new Set<string>();
+
+  for (const toolId of removedToolIds) {
+    const hasAnyAddBack = diff.capabilities.added.some(c => c.tool_id === toolId);
+    if (!hasAnyAddBack) {
+      completelyRemovedTools.add(toolId);
+    }
+  }
+
   const tier3 = [
     ...diff.capabilities.removed.filter(c => c.severity === 'scope_narrowing'),
     ...diff.capabilities.modified.filter(c => c.severity === 'scope_narrowing'),
   ];
   if (tier3.length > 0) {
     const first = tier3[0]!;
+    if (completelyRemovedTools.has(first.tool_id)) {
+      return `${first.tool_id} tool removed.`;
+    }
     if (first.changeType === 'removed') {
       return `${first.tool_id} tool removed; no longer has ${first.verb} access to ${first.resource ?? 'default'}.`;
     }

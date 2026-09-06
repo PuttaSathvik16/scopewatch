@@ -11,6 +11,7 @@ export type CapabilityChange = {
   severity: 'categorical_acquisition' | 'scope_expansion' | 'scope_narrowing' | 'cosmetic';
   provenance: Provenance;
   previousResource: string | undefined; // for scope changes, what it was before
+  isNewTool?: boolean; // true if tool didn't exist in the "from" version
 };
 
 /**

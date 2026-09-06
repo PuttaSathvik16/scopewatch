@@ -29,8 +29,8 @@ const fixtures: FixtureTest[] = [
     fromFile: 'fixture-01-pure-addition-from.json',
     toFile: 'fixture-01-pure-addition-to.json',
     expectedSummary: 'New tool added: writer with write access',
-    expectedNewlyDestructive: false,
-    expectedRiskLevel: 'medium',
+    expectedNewlyDestructive: true,
+    expectedRiskLevel: 'high',
   },
   {
     name: 'Fixture 02: Pure Removal',

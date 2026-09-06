@@ -66,6 +66,9 @@ function indexCapabilitiesByTool(
 
 /**
  * Compute all capability changes between two versions.
+ *
+ * Strategy: index by (tool_id, verb) to properly detect scope changes.
+ * A scope change is when the same (tool_id, verb) pair has different resources.
  */
 function computeCapabilityChanges(
   fromByTool: Map<string, Map<string, CapabilityEntry>>,
@@ -83,6 +86,7 @@ function computeCapabilityChanges(
 
     // Tool entirely removed
     if (!toCaps && fromCaps) {
+      // Tool removal is marked as scope_narrowing, but we need to detect "tool_removed" case
       for (const cap of fromCaps.values()) {
         removed.push({
           tool_id: toolId,
@@ -100,7 +104,12 @@ function computeCapabilityChanges(
     // Tool entirely added
     if (!fromCaps && toCaps) {
       for (const cap of toCaps.values()) {
-        const severity = isDestructive(cap.verb) ? 'categorical_acquisition' : 'cosmetic';
+        // For a completely new tool, classify each capability
+        // If tool is new and has ANY destructive verb → Tier 1 categorical_acquisition
+        // Otherwise, non-destructive adds are cosmetic
+        const hasDestructive = Array.from(toCaps.values()).some(c => isDestructive(c.verb));
+        const severity = hasDestructive && isDestructive(cap.verb) ? 'categorical_acquisition' : 'cosmetic';
+
         added.push({
           tool_id: toolId,
           verb: cap.verb,
@@ -109,66 +118,110 @@ function computeCapabilityChanges(
           severity,
           provenance: cap.provenance,
           previousResource: undefined,
+          isNewTool: true, // Mark that this tool is brand new
         });
       }
       continue;
     }
 
-    // Tool exists in both; compare capabilities
+    // Tool exists in both; compare capabilities at (tool_id, verb) level
     if (fromCaps && toCaps) {
-      const allKeys = new Set([...fromCaps.keys(), ...toCaps.keys()]);
+      // Group by verb to detect scope changes
+      const allVerbs = new Set<Verb>();
+      for (const cap of fromCaps.values()) allVerbs.add(cap.verb);
+      for (const cap of toCaps.values()) allVerbs.add(cap.verb);
 
-      for (const key of allKeys) {
-        const fromCap = fromCaps.get(key);
-        const toCap = toCaps.get(key);
+      for (const verb of allVerbs) {
+        // Collect all resources for this (tool_id, verb) pair
+        const fromResources = Array.from(fromCaps.values())
+          .filter(c => c.verb === verb)
+          .map(c => c.resource);
+        const toResources = Array.from(toCaps.values())
+          .filter(c => c.verb === verb)
+          .map(c => c.resource);
 
-        if (!toCap && fromCap) {
-          // Capability removed
-          removed.push({
-            tool_id: toolId,
-            verb: fromCap.verb,
-            resource: fromCap.resource,
-            changeType: 'removed',
-            severity: 'scope_narrowing',
-            provenance: fromCap.provenance,
-            previousResource: undefined,
-          });
-        } else if (!fromCap && toCap) {
-          // Capability added to existing tool
-          const severity = classifyAddedCapability(toolId, toCap, fromCaps);
-          added.push({
-            tool_id: toolId,
-            verb: toCap.verb,
-            resource: toCap.resource,
-            changeType: 'added',
-            severity,
-            provenance: toCap.provenance,
-            previousResource: undefined,
-          });
-        } else if (fromCap && toCap) {
-          // Both exist; check for changes
-          if (fromCap.resource !== toCap.resource || fromCap.description !== toCap.description) {
-            // Resource changed (scope widening/narrowing) or description changed
-            const severity = classifyScopeChange(fromCap.resource, toCap.resource, fromCap.verb);
+        // If either from or to is empty, it's an addition or removal
+        if (fromResources.length === 0 && toResources.length > 0) {
+          // New verb on existing tool
+          for (const toResource of toResources) {
+            const toCap = Array.from(toCaps.values()).find(c => c.verb === verb && c.resource === toResource)!;
+            const severity = classifyAddedCapability(toolId, toCap, fromCaps);
+            added.push({
+              tool_id: toolId,
+              verb,
+              resource: toResource,
+              changeType: 'added',
+              severity,
+              provenance: toCap.provenance,
+              previousResource: undefined,
+            });
+          }
+        } else if (fromResources.length > 0 && toResources.length === 0) {
+          // Verb entirely removed
+          for (const fromResource of fromResources) {
+            const fromCap = Array.from(fromCaps.values()).find(c => c.verb === verb && c.resource === fromResource)!;
+            removed.push({
+              tool_id: toolId,
+              verb,
+              resource: fromResource,
+              changeType: 'removed',
+              severity: 'scope_narrowing',
+              provenance: fromCap.provenance,
+              previousResource: undefined,
+            });
+          }
+        } else if (fromResources.length === 1 && toResources.length === 1) {
+          // Single resource per verb in both versions → check for scope change
+          const fromResource = fromResources[0]!;
+          const toResource = toResources[0]!;
+
+          if (fromResource !== toResource) {
+            const toCap = Array.from(toCaps.values()).find(c => c.verb === verb && c.resource === toResource)!;
+            const severity = classifyScopeChange(fromResource, toResource, verb);
 
             if (severity !== 'cosmetic') {
               modified.push({
                 tool_id: toolId,
-                verb: fromCap.verb,
-                resource: toCap.resource,
+                verb,
+                resource: toResource,
                 changeType: 'modified',
                 severity,
                 provenance: toCap.provenance,
-                previousResource: fromCap.resource,
+                previousResource: fromResource,
               });
-            } else if (fromCap.description !== toCap.description) {
-              // Description-only change
-              modified.push({
+            }
+          }
+        } else {
+          // Multiple resources before/after for the same (tool_id, verb)
+          // For now, treat as independent additions/removals
+          // TODO: implement containment check for multiple resources
+          const fromSet = new Set(fromResources);
+          const toSet = new Set(toResources);
+
+          for (const fromRes of fromResources) {
+            if (!toSet.has(fromRes)) {
+              const fromCap = Array.from(fromCaps.values()).find(c => c.verb === verb && c.resource === fromRes)!;
+              removed.push({
                 tool_id: toolId,
-                verb: fromCap.verb,
-                resource: toCap.resource,
-                changeType: 'modified',
-                severity: 'cosmetic',
+                verb,
+                resource: fromRes,
+                changeType: 'removed',
+                severity: 'scope_narrowing',
+                provenance: fromCap.provenance,
+                previousResource: undefined,
+              });
+            }
+          }
+
+          for (const toRes of toResources) {
+            if (!fromSet.has(toRes)) {
+              const toCap = Array.from(toCaps.values()).find(c => c.verb === verb && c.resource === toRes)!;
+              added.push({
+                tool_id: toolId,
+                verb,
+                resource: toRes,
+                changeType: 'added',
+                severity: 'cosmetic', // for multi-resource case, be conservative
                 provenance: toCap.provenance,
                 previousResource: undefined,
               });
@@ -354,7 +407,11 @@ function computeSecretChanges(
 
 /**
  * Determine overall risk level for the update.
- * Tiers: 1=high, 2=medium, 3&4=low, but new tools/secrets can elevate
+ * Mapping:
+ * - high: Tier 1 (newly destructive), OR new secret with destructive capability
+ * - medium: Tier 2 (scope expansion), new tool, new non-destructive capability, new secret without destructive, secret requirement changed
+ * - low: only removals and scope narrowing
+ * - none: no capability or secret changes
  */
 function determineRiskLevel(
   capabilityChanges: {
@@ -388,8 +445,9 @@ function determineRiskLevel(
     return 'high';
   }
 
-  // New required secrets → high
-  if (secretChanges.new.length > 0) {
+  // New required secret WITH destructive capability → high
+  // (new secret by itself is medium, but with destructive capability it's high)
+  if (secretChanges.new.length > 0 && newly_destructive) {
     return 'high';
   }
 
@@ -398,8 +456,18 @@ function determineRiskLevel(
     return 'medium';
   }
 
-  // New non-destructive capabilities → medium
+  // New capabilities (even non-destructive) → medium
   if (capabilityChanges.added.some(c => c.severity !== 'categorical_acquisition')) {
+    return 'medium';
+  }
+
+  // New secret (without destructive capability) → medium
+  if (secretChanges.new.length > 0) {
+    return 'medium';
+  }
+
+  // Reused secret (tool using existing secret) → medium
+  if (secretChanges.reused.length > 0) {
     return 'medium';
   }
 

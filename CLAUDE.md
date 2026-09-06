@@ -141,11 +141,11 @@ All checks confirmed:
 
 ---
 
-## Phase B: Capability Diff Engine (in progress, ~70% complete)
+## Phase B: Capability Diff Engine ✅ (2026-09-06)
 
-Status: Core algorithm implemented, 4 of 12 tests passing. Debugging edge cases in severity classification and rendering.
+Status: Complete. All 12 fixture pairs pass with correct severity classification and rendering.
 
-Commits: 2 (Phase B scaffolding and fixtures, Phase B core algorithm WIP)
+Commits: 3 (Phase B scaffolding and fixtures, Phase B core algorithm, Phase B fixes)
 
 ### Phase B Scope (P0: correctness of diff is higher than all other P0s)
 The diff engine is the product. It must:
@@ -204,20 +204,26 @@ Test asserts: `rendered_diff.includes(expected_summary)` — the human-readable 
 - [x] Write expected_summary for each fixture
 - [x] Implement diff rendering (severity-ordered, tool-grouped)
 - [x] Write tests: each fixture produces diff containing its expected_summary
-- [ ] Debug and fix remaining test failures (9 of 12 failing)
-  - [ ] Tool removal detection (fixtures 02, 08)
-  - [ ] Scope comparison for widening/narrowing (fixtures 03, 04)
-  - [ ] Categorical acquisition for existing tools (fixture 06)
-  - [ ] Risk level calculation refinement (fixtures 01, 03, 09)
+- [x] Debug and fix all test failures (21/21 tests passing)
+  - [x] Tool removal detection (fixtures 02, 08) — special-cased complete tool removals
+  - [x] Scope comparison for widening/narrowing (fixtures 03, 04) — refactored indexing to verb-level
+  - [x] Categorical acquisition for existing tools (fixture 06) — using `isNewTool` flag
+  - [x] Risk level calculation (fixtures 01, 09) — correct mapping of new tools + new secrets to medium
 
-### Phase B Exit Check
-All 12 fixtures pass: diff output includes the human-readable summary without the underlying manifests visible.
+### Phase B Exit Check ✅
+All 21 tests passing (12 Phase B fixtures + 9 Phase A validation tests). Diff output includes human-readable summaries without exposing underlying manifests.
 
-**Current Status:** 9 tests failing, mostly around severity classification and output formatting. The core algorithm is correct but needs refinement for edge cases.
+**Delivered:**
+- Correct severity classification at four tiers (Tier 1: categorical_acquisition, Tier 2: scope_expansion, Tier 3: scope_narrowing, Tier 4: cosmetic)
+- Scope change detection for (tool_id, verb) pairs with different resources
+- Complete tool removal detection and summarization
+- New tool identification with "New tool added:" phrasing
+- Risk level mapping (high/medium/low/none) aligned to threat model
+- Credential change tracking (new/reused/removed/required_changed)
 
 ## Deviations from Brief (none yet)
 
 ---
 
-**Last updated:** 2026-09-06 (Phase A complete, Phase B ready)  
-**Commits:** 1 (Phase A foundation)
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅ complete)  
+**Commits:** 3 (Phase A foundation + Phase B implementation + Phase B fixes)

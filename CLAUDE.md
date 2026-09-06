@@ -673,7 +673,53 @@ they were anticipated in the design pass.
 
 Full suite: 139/139 passing (126 prior + 13 new: 12 inference tests + 1 dist-smoke).
 
+### Follow-up hardening: name-first classification, conjugation audit, and an honest limit on how far either goes
+
+Post-review, three further changes:
+
+1. **Name-first classification for the "which flavor" decision.** A tool's
+   name is terse and verb-led by convention (`read_file`, `write_file`) with
+   none of the incidental nouns/adjectives that description prose carries.
+   Checking the name alone first, before ever touching the description, for
+   branch decisions (e.g. delete vs execute vs write within the destructive
+   pool) structurally prevents most of the noun/verb ambiguity that produced
+   the two bugs above.
+
+2. **This alone was proven NOT sufficient** - verified directly, not
+   assumed: temporarily reverted the `messag`/`creat`/`modif` word-specific
+   exclusions while keeping name-first in place, and `read_text_file`'s
+   "detailed error messages" reappeared as a false `send` classification -
+   just via a different path than before. The severity-override rule (which
+   exists specifically so a calm-sounding name, like a hypothetical
+   `benign_reader` whose description says it "permanently deletes"
+   something, can't suppress a real danger signal) must scan the *full*
+   name+description text by design, and that full-text scan is exactly
+   where the same ambiguity can re-enter. **Both the name-first structure
+   and the word-specific exclusions are load-bearing; neither alone is
+   sufficient** - this is stated explicitly in `infer.ts`'s module doc
+   comment, including the exact revert-and-reproduce steps that proved it,
+   so a future reader doesn't assume the structural fix alone closed the
+   class of bug.
+
+3. **Conjugation audit across every keyword category**, not just the
+   `delete` list that broke first: added `sent` (irregular past tense of
+   send; guarded against colliding with "sentence"/"sentiment") and `found`
+   (irregular past tense of find; guarded against colliding with
+   "foundation") as exact whole-word forms. Rarer irregulars (ran, got,
+   gotten, ate) are deliberately left unaddressed and documented as a known
+   gap rather than exhaustively chased - diminishing returns for a
+   heuristic system.
+
+Re-validated against all 14 real tools after every change (zero warnings on
+this well-behaved real server; `move_file`'s resource correctly falls to
+the honest `*` wildcard rather than `filesystem:*`, since its `source`/
+`destination` parameters have no description and don't match the path-
+keyword patterns - a defensible outcome, not a bug).
+
+Full suite: 139/139 passing (unchanged count - this was a correctness
+hardening pass, not new fixtures).
+
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete; Phase G in progress - capability inference done, CLI wiring next)  
-**Commits:** 14 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference)
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete; Phase G in progress - capability inference done and hardened, CLI wiring next)  
+**Commits:** 15 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening)

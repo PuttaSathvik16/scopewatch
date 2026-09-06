@@ -122,11 +122,24 @@ function makeShimBin(): string {
   // node shim: fakes --version only (this machine's real Node is below
   // Scopewatch's own floor); forwards everything else to the REAL node,
   // since npx/npm scripts and the CLI binary itself genuinely need it.
+  // Batch bodies deliberately avoid ANY label or `goto` nested inside a
+  // parenthesized if/else block - cmd.exe pre-parses block structure for the
+  // WHOLE script before executing anything, and a goto/label crossing a `()`
+  // boundary is a well-known way to corrupt that parse for the entire file,
+  // not just the block it's in (found via a real Windows CI run: even the
+  // trivial `--version` branch failed, which only makes sense if the
+  // install-branch's nested :parseargs loop below it broke the whole file's
+  // parse, not just its own branch). Every label/goto here is top-level.
   writeShim(
     shimDir,
     'node',
     `if [ "$1" = "--version" ]; then echo "v22.5.0"; else exec "${realNode}" "$@"; fi\n`,
-    `if "%~1"=="--version" (\r\n  echo v22.5.0\r\n) else (\r\n  "${realNode}" %*\r\n)\r\n`
+    `if "%~1"=="--version" goto version\r\n` +
+      `"${realNode}" %*\r\n` +
+      `exit /b %errorlevel%\r\n` +
+      `:version\r\n` +
+      `echo v22.5.0\r\n` +
+      `exit /b 0\r\n`
   );
 
   // npm shim: fakes --version, and fakes `install <pkg> --prefix <dir>` by
@@ -155,18 +168,27 @@ if [ "$1" = "install" ]; then
 fi
 exit 1
 `,
-    `if "%~1"=="--version" (\r\n  echo 10.8.2\r\n  exit /b 0\r\n)\r\n` +
-      `if "%~1"=="install" (\r\n` +
-      `  setlocal enabledelayedexpansion\r\n` +
-      `  set "PREFIX="\r\n  set "PKG=%~2"\r\n` +
-      `  :parseargs\r\n  if "%~1"=="" goto doneargs\r\n` +
-      `  if "%~1"=="--prefix" (\r\n    set "PREFIX=%~2"\r\n    shift\r\n  )\r\n` +
-      `  shift\r\n  goto parseargs\r\n  :doneargs\r\n` +
-      `  mkdir "%PREFIX%\\node_modules\\%PKG%" 2>nul\r\n` +
-      `  > "%PREFIX%\\node_modules\\%PKG%\\package.json" echo {"name":"%PKG%","version":"1.0.0","main":"index.js"}\r\n` +
-      `  > "%PREFIX%\\node_modules\\%PKG%\\index.js" echo export {};\r\n` +
-      `  echo added 1 package\r\n  exit /b 0\r\n)\r\n` +
-      `exit /b 1\r\n`
+    `if "%~1"=="--version" goto version\r\n` +
+      `if "%~1"=="install" goto install\r\n` +
+      `exit /b 1\r\n` +
+      `:version\r\n` +
+      `echo 10.8.2\r\n` +
+      `exit /b 0\r\n` +
+      `:install\r\n` +
+      `setlocal enabledelayedexpansion\r\n` +
+      `set "PREFIX="\r\n` +
+      `set "PKG=%~2"\r\n` +
+      `:parseargs\r\n` +
+      `if "%~1"=="" goto doneargs\r\n` +
+      `if "%~1"=="--prefix" set "PREFIX=%~2" & shift\r\n` +
+      `shift\r\n` +
+      `goto parseargs\r\n` +
+      `:doneargs\r\n` +
+      `mkdir "%PREFIX%\\node_modules\\%PKG%" 2>nul\r\n` +
+      `> "%PREFIX%\\node_modules\\%PKG%\\package.json" echo {"name":"%PKG%","version":"1.0.0","main":"index.js"}\r\n` +
+      `> "%PREFIX%\\node_modules\\%PKG%\\index.js" echo export {};\r\n` +
+      `echo added 1 package\r\n` +
+      `exit /b 0\r\n`
   );
 
   // npx shim: ignores the requested package identifier entirely and execs

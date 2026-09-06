@@ -1172,5 +1172,87 @@ testing - including three prior "end-to-end" journeys - missed.
 
 ---
 
+## Bullet 8 closed for real: the first genuine, fully-green CI run
+
+Pushing the work above to a real GitHub remote for the first time
+(https://github.com/PuttaSathvik16/scopewatch) gave `.github/workflows/ci.yml`
+its first real execution ever - and it immediately found three more real
+bugs, none matching either of the two plausible guesses considered first
+(native-binary resolution, filesystem case sensitivity). Diagnosed entirely
+from real `gh run view --log-failed` output, not inference from a browser
+screenshot:
+
+1. **`windows-latest`'s first "success" was a false green.**
+   `package.json`'s `test`/`test:e2e` scripts used single-quoted glob
+   patterns. npm invokes scripts via `cmd`/`pwsh` on Windows, which don't
+   strip single quotes the way bash does - the literal quote characters
+   reached Node's glob matcher, matching zero files. The log read
+   `1..0 / # tests 0 / # pass 0 / # fail 0`, reported as a passing step.
+   Fixed by switching to double quotes (stripped by both bash and cmd).
+2. **`keychain-macos.test.ts`'s real round-trip tests had no platform
+   guard** and ran unconditionally on every OS, hard-failing wherever
+   `security` doesn't exist. `keychain-linux.test.ts` and
+   `keychain-windows.test.ts` turned out to already be fully offline/
+   injected - not every platform-specific test file had this gap, only
+   this one. Fixed with a `process.platform !== 'darwin'` skip.
+3. **`ubuntu-latest` has no Secret Service running at all** by default, so
+   every secret-dependent test correctly hit Phase D's own
+   `no_keychain_backend` failure path - the product working exactly as
+   designed, just never given a real backend to prove the Linux path
+   against. Added a CI step provisioning a real, unlocked gnome-keyring via
+   `dbus-launch` - Linux is a claimed supported platform, not best-effort,
+   so this earns real CI coverage rather than a skip. First attempt started
+   a real Secret Service but had nothing to unlock (`secret-tool`'s default
+   "login" collection alias resolved to nothing with no pre-existing
+   keyring file - `Object does not exist at path .../collection/login`);
+   fixed by pre-creating an always-unlocked `~/.local/share/keyrings/
+   login.keyring` before starting the daemon, the standard headless-Linux
+   keyring CI recipe.
+
+A second real run (after those three fixes) surfaced five more, all
+diagnosed from real log text before touching anything:
+
+4. **`activate.test.ts` and `dist-smoke.test.ts` hardcoded POSIX path
+   separators** in their expectations (`'/proj/.mcp.json'`) against
+   `configPathFor()`, which correctly uses `path.join` and returns native
+   separators - a test bug, not a product bug. Windows produced
+   `'\proj\.mcp.json'` and the hardcoded literal failed. Fixed by building
+   expectations with `join()` too, so the assertion matches whatever the
+   current platform actually produces.
+5. **`golden-path-both-clients.test.ts`'s "Secret sharing" test**
+   independently re-verified the stored secret via a hardcoded `security
+   find-generic-password` call - macOS-only, `ENOENT` on Windows. Fixed by
+   replacing it with the package's own cross-platform `retrieveSecret()`
+   dispatcher, which is more correct anyway (real coverage on every OS, no
+   skip needed).
+6. **The SIGTERM-forwarding test's actual premise doesn't hold on
+   Windows**: it asserts the child printed a message from its own SIGTERM
+   handler, but Windows has no POSIX signal semantics -
+   `child.kill('SIGTERM')` terminates the process unconditionally rather
+   than invoking a handler. Skipped on `win32` with the reasoning stated
+   inline; the wrapper's actual signal-forwarding code is still exercised
+   via the exit-code propagation tests on every platform.
+7. **The real-subprocess Journey A test's isolation strategy is POSIX-only
+   by construction**: its shim scripts are `#!/bin/sh`, and its pty
+   allocation uses Python's `pty.spawn`. Skipped on `win32` with the gap
+   stated explicitly - consistent with Phase D's existing "Windows keychain
+   path unverified on real hardware" disclosure, not a new kind of gap.
+
+**Third run: all four jobs green for real** - `ubuntu-latest`,
+`windows-latest`, `macos-latest`, `test-e2e` - confirmed via
+`gh run view <id>` showing every job and every step passing, not inferred
+from a single top-level checkmark. This is the first execution of this
+workflow since it was written in Phase I; bullet 8 of the Section 19
+acceptance table is now genuinely closed, not just structurally ready.
+
+Total real bugs found across both CI debugging rounds: 8, none matching the
+first plausible guess for any of them (native-binary resolution and
+case-sensitivity were both considered and both wrong) - the entire set only
+surfaced by pulling real `gh run view --log-failed` output and reading the
+actual error text before forming a theory, the same discipline this build
+has used throughout.
+
+---
+
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅, Phase I ✅ complete - MVP acceptance: 8/9, 9th blocked on external infra)  
 **Commits:** 21 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler + Phase I diagnostics/docs + Phase I command-wiring audit)

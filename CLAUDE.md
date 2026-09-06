@@ -719,7 +719,37 @@ keyword patterns - a defensible outcome, not a bug).
 Full suite: 139/139 passing (unchanged count - this was a correctness
 hardening pass, not new fixtures).
 
+### The actual resolution: narrowing the override's scope to match its stated purpose
+
+The tension above (name-first vs. the override needing full-text scanning)
+had a real fix, not just a documented tradeoff. The override's job is
+narrow: "is this tool secretly destructive despite a calm name/hint" - not
+"does the full text contain any keyword at all." It was scanning against
+all six categories, which is strictly broader than that job requires, and
+that excess breadth was the exact path `read_text_file`'s stray `send`
+match reappeared through. Narrowed `matchDangerousKeyword` to scan the full
+text against **only the delete/execute patterns** - the two categories the
+override actually exists to catch.
+
+**Verified this genuinely closes the gap, not just moves it**: with both
+defenses in place (name-first + the narrowed override), temporarily
+reverted *every* word-specific exclusion in `KEYWORD_PATTERNS`
+(`messag`/`creat`/`modif` exclusions, `sent`/`found` additions) and reran
+the full 12-test fixture matrix - all 12 passed, including the two tests
+(`read_text_file`'s classification, the `benign_reader` override fixture)
+that had specifically broken in earlier iterations. That is the actual
+test of whether this closed the class of bug: not whether it passes with
+the patches in place, but whether the patches became unnecessary. They
+did. Restored them anyway as defense-in-depth for the one remaining path
+they still matter on (a generically-named tool with no name-first match
+still falls back to a full six-category scan for its default
+classification) - but they are no longer load-bearing for the two cases
+that originally broke.
+
+Full suite: 139/139 passing (same fixture count; this was a correctness
+narrowing, not new fixtures).
+
 ---
 
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅ complete; Phase G in progress - capability inference done and hardened, CLI wiring next)  
-**Commits:** 15 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening)
+**Commits:** 16 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing)

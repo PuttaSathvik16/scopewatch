@@ -13,32 +13,47 @@ type Verb = InferredCapability['verb'];
  * @modelcontextprotocol/server-filesystem (see test/fixtures/real-filesystem-server-tools.json,
  * captured directly from a real tools/list response, not invented).
  *
- * KNOWN, PERMANENT LIMITATION - not a bug to eventually fix, a property of
- * doing this over natural language. Verb inference checks the tool's NAME
- * first for the "which flavor" decision (e.g. delete vs execute vs write
- * within the destructive pool) - terse, verb-led names carry none of the
- * incidental nouns/adjectives flowing description prose does, which
- * structurally prevented a real class of bug found during validation
- * (get_file_info's "creation"/"modified" timestamp fields being misread as
- * write actions).
+ * TWO STRUCTURAL DEFENSES against the noun/verb ambiguity inherent to
+ * scanning natural-language tool descriptions (a word like "modified" or
+ * "messages" can be a verb or a noun/adjective depending on context a
+ * keyword regex can't see):
  *
- * This name-first check is NOT a complete fix, and callers should not treat
- * it as one: the severity-override rule (see inferVerb) must scan the FULL
- * name+description text regardless of what the name alone found, because
- * its entire purpose is catching a genuinely more dangerous signal that a
- * calm-sounding NAME might otherwise suppress (a tool named "benign_reader"
- * whose description says it "permanently deletes" a file). That full-text
- * scan is exactly where the same noun/verb ambiguity can still slip back
- * in - confirmed directly: temporarily reverting this module's own
- * word-specific exclusions (the 'messag'/'creat'/'modif' exclusions below)
- * while keeping name-first in place caused read_text_file's "detailed error
- * messages" to reappear as a false 'send' classification, via the override
- * path rather than the branch-decision path the original bug used. Both the
- * name-first structure AND the word-specific exclusions are load-bearing;
- * neither alone is sufficient, and a future real server will likely surface
- * new instances of this ambiguity through the override path specifically.
- * Treat that as an interesting new fixture to add, not evidence of a
- * regression.
+ * 1. Verb inference checks the tool's NAME first for the "which flavor"
+ *    decision (e.g. delete vs execute vs write within the destructive
+ *    pool) - terse, verb-led names carry none of the incidental nouns/
+ *    adjectives flowing description prose does.
+ *
+ * 2. The severity-override rule (see inferVerb, matchDangerousKeyword)
+ *    scans the FULL name+description text regardless of what the name
+ *    alone found - its purpose is catching a genuinely more dangerous
+ *    signal that a calm-sounding NAME might otherwise suppress (a tool
+ *    named "benign_reader" whose description says it "permanently
+ *    deletes" a file) - but it is deliberately narrowed to ONLY the
+ *    delete/execute patterns, not all six categories. The override's job
+ *    is specifically "is this secretly destructive," not "does the full
+ *    text contain any keyword at all" - scanning against all six was
+ *    strictly broader than that job required, and that excess breadth was
+ *    the exact path a stray 'send' match ("detailed error messages")
+ *    reappeared through even with name-first in place and no other bug
+ *    present.
+ *
+ * Confirmed directly, not assumed: with both defenses in place, temporarily
+ * reverting every word-specific exclusion in KEYWORD_PATTERNS below (the
+ * 'messag'/'creat'/'modif' exclusions and the 'sent'/'found' additions) and
+ * re-running the full fixture matrix - all 12 tests, including the ones
+ * that broke earlier iterations - passed with none of those patches in
+ * place. That's the actual signal that this closes the class of bug
+ * structurally rather than requiring an ever-growing patch list: the
+ * patches are kept anyway as defense-in-depth for the one path they still
+ * matter on (a generically-named tool with no name-first match still falls
+ * back to a full six-category scan for its default classification), but
+ * they are no longer load-bearing for the two cases that originally broke.
+ *
+ * This is not claimed as a complete solution to keyword-heuristic ambiguity
+ * over natural language - it structurally closed the specific interaction
+ * discovered so far. A future real server could still surface a new
+ * instance through the remaining fallback path; treat that as an
+ * interesting new fixture to add, not evidence of a regression.
  */
 
 const SEVERITY: Record<Verb, number> = { read: 0, fetch: 1, send: 1, write: 2, delete: 3, execute: 3 };
@@ -111,6 +126,25 @@ function matchKeyword(text: string): Verb | null {
   return null;
 }
 
+// The severity-override's actual job is narrow: "does the full text contain
+// a delete or execute signal the name alone missed" - not "does the full
+// text contain ANY keyword at all." A name-first match to read/write/send/
+// fetch that isn't contradicted by an actual delete/execute signal has
+// nothing for the override to correct; scanning against all six categories
+// was strictly broader than that job requires, and that excess breadth was
+// exactly the path "detailed error messages" used to reappear as a false
+// 'send' override even with name-first in place and no other bug present.
+// Checking only the two categories the override actually exists to catch
+// removes that path entirely, rather than patching around it per word.
+const DANGEROUS_PATTERNS: [Verb, RegExp][] = KEYWORD_PATTERNS.filter(([verb]) => verb === 'delete' || verb === 'execute');
+
+function matchDangerousKeyword(text: string): Verb | null {
+  for (const [verb, pattern] of DANGEROUS_PATTERNS) {
+    if (pattern.test(text)) return verb;
+  }
+  return null;
+}
+
 function inferVerb(tool: McpTool): { verb: Verb; warnings: string[] } {
   // Name-first: a tool's NAME is terse and verb-led by convention
   // (read_file, write_file, delete_record) with none of the incidental
@@ -127,16 +161,18 @@ function inferVerb(tool: McpTool): { verb: Verb; warnings: string[] } {
   // This alone is NOT sufficient, though: it must not let a calm-sounding
   // NAME suppress a genuinely more dangerous signal sitting in the
   // description (e.g. a tool named "benign_reader" whose description says
-  // it "permanently deletes" something). So severityKeywordVerb below
+  // it "permanently deletes" something). So dangerousKeywordVerb below
   // ALWAYS scans the full name+description text, independent of what the
-  // name-first check found, specifically to feed the severity-override rule
-  // - the override's whole purpose is that nothing (including a misleadingly
-  // calm name) gets to silently suppress a more severe signal anywhere in
-  // the tool's own self-description.
+  // name-first check found - but ONLY against the delete/execute patterns
+  // specifically (see matchDangerousKeyword), not all six categories. The
+  // override's actual job is narrow ("is this secretly destructive"), and
+  // scanning against all six was strictly broader than that job needed -
+  // that excess breadth was the exact path a stray 'send' match ("detailed
+  // error messages") used to reappear even with name-first in place.
   const nameOnlyVerb = matchKeyword(normalize(tool.name));
   const fullText = normalize(`${tool.name} ${tool.description}`);
-  const severityKeywordVerb = matchKeyword(fullText);
-  const keywordVerb = nameOnlyVerb ?? severityKeywordVerb;
+  const dangerousKeywordVerb = matchDangerousKeyword(fullText);
+  const keywordVerb = nameOnlyVerb ?? matchKeyword(fullText);
   const ann = tool.annotations;
   const warnings: string[] = [];
 
@@ -158,11 +194,11 @@ function inferVerb(tool: McpTool): { verb: Verb; warnings: string[] } {
   }
 
   let finalVerb = hintVerb;
-  if (severityKeywordVerb && SEVERITY[severityKeywordVerb] > SEVERITY[hintVerb]) {
+  if (dangerousKeywordVerb && SEVERITY[dangerousKeywordVerb] > SEVERITY[hintVerb]) {
     warnings.push(
-      `Tool '${tool.name}': keyword evidence ('${severityKeywordVerb}') found in its name or description is more severe than the annotation/name-based classification ('${hintVerb}'); using the more cautious classification.`
+      `Tool '${tool.name}': keyword evidence ('${dangerousKeywordVerb}') found in its name or description is more severe than the annotation/name-based classification ('${hintVerb}'); using the more cautious classification.`
     );
-    finalVerb = severityKeywordVerb;
+    finalVerb = dangerousKeywordVerb;
   }
 
   return { verb: finalVerb, warnings };

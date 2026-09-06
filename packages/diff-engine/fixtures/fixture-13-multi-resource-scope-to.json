@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "version": "1.1.0",
+  "source": { "type": "npm", "location": "example-tools" },
+  "checksum": "sha256:to13",
+  "tools": [
+    { "id": "syncer", "name": "Repo Syncer", "description": "Sync between repositories" }
+  ],
+  "capabilities": [
+    { "tool_id": "syncer", "verb": "read", "resource": "repo:owner/*", "provenance": "declared" }
+  ],
+  "secrets": [
+    { "id": "GITHUB_TOKEN", "description": "GitHub token", "required": true, "used_by": ["syncer"] }
+  ]
+}

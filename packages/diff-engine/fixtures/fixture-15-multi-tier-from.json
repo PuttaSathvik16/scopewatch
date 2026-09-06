@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "version": "1.0.0",
+  "source": { "type": "npm", "location": "example-tools" },
+  "checksum": "sha256:from15",
+  "tools": [
+    { "id": "reader", "name": "File Reader", "description": "Read files from repo" },
+    { "id": "logger", "name": "Logger", "description": "Log events to external service" },
+    { "id": "pruner", "name": "Repo Pruner", "description": "Prune old branches from all repos" },
+    { "id": "updater", "name": "File Updater", "description": "Updates files in repo" }
+  ],
+  "capabilities": [
+    { "tool_id": "reader", "verb": "read", "resource": "repo:owner/name", "provenance": "declared" },
+    { "tool_id": "logger", "verb": "send", "resource": "http:*", "provenance": "declared" },
+    { "tool_id": "pruner", "verb": "delete", "resource": "repo:*", "provenance": "declared" },
+    { "tool_id": "updater", "verb": "write", "resource": "repo:owner/name", "provenance": "declared" }
+  ],
+  "secrets": [
+    { "id": "GITHUB_TOKEN", "description": "GitHub token", "required": true, "used_by": ["reader", "pruner", "updater"] }
+  ]
+}

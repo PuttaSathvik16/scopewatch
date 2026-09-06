@@ -193,38 +193,64 @@ function computeCapabilityChanges(
           }
         } else {
           // Multiple resources before/after for the same (tool_id, verb)
-          // For now, treat as independent additions/removals
-          // TODO: implement containment check for multiple resources
+          // Detect additions/removals/widening independently per resource
           const fromSet = new Set(fromResources);
           const toSet = new Set(toResources);
 
           for (const fromRes of fromResources) {
             if (!toSet.has(fromRes)) {
+              // This resource was removed. Check if it's subsumed by a wider resource in "to"
+              const isSubsumedByWider = toResources.some(toRes => isScopeWider(fromRes, toRes));
               const fromCap = Array.from(fromCaps.values()).find(c => c.verb === verb && c.resource === fromRes)!;
-              removed.push({
-                tool_id: toolId,
-                verb,
-                resource: fromRes,
-                changeType: 'removed',
-                severity: 'scope_narrowing',
-                provenance: fromCap.provenance,
-                previousResource: undefined,
-              });
+
+              if (isSubsumedByWider) {
+                // The resource was subsumed by a wider one → this is part of a widening change
+                // Mark it as a modification on the wider resource instead
+                // (The matching "added" wider resource will be classified as scope_expansion)
+              } else {
+                // Standalone removal
+                removed.push({
+                  tool_id: toolId,
+                  verb,
+                  resource: fromRes,
+                  changeType: 'removed',
+                  severity: 'scope_narrowing',
+                  provenance: fromCap.provenance,
+                  previousResource: undefined,
+                });
+              }
             }
           }
 
           for (const toRes of toResources) {
             if (!fromSet.has(toRes)) {
+              // This resource was added. Check if it's a widening of an existing resource
+              const matchingNarrower = fromResources.find(fromRes => isScopeWider(fromRes, toRes));
               const toCap = Array.from(toCaps.values()).find(c => c.verb === verb && c.resource === toRes)!;
-              added.push({
-                tool_id: toolId,
-                verb,
-                resource: toRes,
-                changeType: 'added',
-                severity: 'cosmetic', // for multi-resource case, be conservative
-                provenance: toCap.provenance,
-                previousResource: undefined,
-              });
+
+              if (matchingNarrower) {
+                // This is a widening of an existing resource
+                modified.push({
+                  tool_id: toolId,
+                  verb,
+                  resource: toRes,
+                  changeType: 'modified',
+                  severity: 'scope_expansion',
+                  provenance: toCap.provenance,
+                  previousResource: matchingNarrower,
+                });
+              } else {
+                // Standalone addition (new resource, different from any existing one)
+                added.push({
+                  tool_id: toolId,
+                  verb,
+                  resource: toRes,
+                  changeType: 'added',
+                  severity: 'cosmetic', // Non-destructive additional resource
+                  provenance: toCap.provenance,
+                  previousResource: undefined,
+                });
+              }
             }
           }
         }
@@ -287,20 +313,49 @@ function classifyScopeChange(
 }
 
 /**
- * Check if toScope is wider than fromScope.
- * Simple implementation: ":" → "*" pattern.
+ * Check if toScope is wider than fromScope per the resource grammar.
+ * Resource format: domain:path with /–delimited segments and trailing * for wildcards.
+ *
+ * A pattern matches another if:
+ * - Same domain
+ * - toPath contains everything fromPath matches, plus at least one thing it doesn't
+ *
+ * Examples of widening:
+ * - repo:owner/name → repo:* (specific → all)
+ * - repo:owner/name → repo:owner/* (specific → directory level)
+ * - repo:owner/* → repo:* (directory → all)
  */
 function isScopeWider(fromScope: string | undefined, toScope: string | undefined): boolean {
   if (!fromScope || !toScope) return false;
+  if (fromScope === toScope) return false; // No change
 
-  // repo:owner/name → repo:* is wider
   const fromParts = fromScope.split(':');
   const toParts = toScope.split(':');
 
-  if (fromParts[0] !== toParts[0]) return false; // Different resource types
+  if (fromParts.length !== 2 || toParts.length !== 2) return false;
+  if (fromParts[0] !== toParts[0]) return false; // Different resource domains
 
-  if (toParts[1] === '*' && fromParts[1] !== '*') {
-    return true;
+  const fromDomain = fromParts[0]!;
+  const fromPath = fromParts[1]!;
+  const toPath = toParts[1]!;
+
+  // Both are wildcards → no change
+  if (toPath === '*' && fromPath === '*') return false;
+
+  // To is global wildcard → always wider (unless from already is)
+  if (toPath === '*' && fromPath !== '*') return true;
+
+  // To is directory wildcard, from is not → potentially wider
+  // E.g., repo:owner/* vs repo:owner/name
+  if (toPath.endsWith('/*') && !fromPath.endsWith('/*') && !fromPath.endsWith('*')) {
+    const toDir = toPath.slice(0, -2); // Remove trailing /*
+    return fromPath.startsWith(toDir + '/');
+  }
+
+  // Both have wildcards at same level → not wider
+  // E.g., repo:owner/* vs repo:owner/* (equal)
+  if (toPath.endsWith('/*') && fromPath.endsWith('/*')) {
+    return toPath.length > fromPath.length && fromPath.startsWith(toPath.slice(0, -2));
   }
 
   return false;
@@ -407,11 +462,11 @@ function computeSecretChanges(
 
 /**
  * Determine overall risk level for the update.
- * Mapping:
- * - high: Tier 1 (newly destructive), OR new secret with destructive capability
- * - medium: Tier 2 (scope expansion), new tool, new non-destructive capability, new secret without destructive, secret requirement changed
- * - low: only removals and scope narrowing
- * - none: no capability or secret changes
+ * Follows the locked mapping exactly:
+ * - high: any categorical_acquisition, OR any new required secret with no reuse
+ * - medium: any scope_expansion, OR new required secret reusing existing credential, OR required_changed
+ * - low: only removals/narrowing, OR reused secret with no other changes
+ * - none: cosmetic-only or no changes
  */
 function determineRiskLevel(
   capabilityChanges: {
@@ -440,42 +495,36 @@ function determineRiskLevel(
     return 'none';
   }
 
-  // Tier 1 (newly destructive) → high
+  // HIGH RISK: Tier 1 (newly destructive capability)
   if (newly_destructive) {
     return 'high';
   }
 
-  // New required secret WITH destructive capability → high
-  // (new secret by itself is medium, but with destructive capability it's high)
-  if (secretChanges.new.length > 0 && newly_destructive) {
+  // HIGH RISK: Any new required secret with no reuse (locked rule, independent of capability tier)
+  if (secretChanges.new.length > 0) {
     return 'high';
   }
 
-  // Tier 2 changes (scope expansion) → medium
+  // MEDIUM RISK: Tier 2 changes (scope expansion)
   if (capabilityChanges.modified.some(c => c.severity === 'scope_expansion')) {
     return 'medium';
   }
 
-  // New capabilities (even non-destructive) → medium
+  // MEDIUM RISK: New non-destructive capabilities
   if (capabilityChanges.added.some(c => c.severity !== 'categorical_acquisition')) {
     return 'medium';
   }
 
-  // New secret (without destructive capability) → medium
-  if (secretChanges.new.length > 0) {
-    return 'medium';
-  }
-
-  // Reused secret (tool using existing secret) → medium
+  // MEDIUM RISK: Reused secret (existing secret used by new tools)
   if (secretChanges.reused.length > 0) {
     return 'medium';
   }
 
-  // Secret requirement changed → medium
+  // MEDIUM RISK: Secret requirement changed (graceful degradation disappears)
   if (secretChanges.required_changed.length > 0) {
     return 'medium';
   }
 
-  // Only removals and scope narrowing → low
+  // LOW RISK: Only removals and scope narrowing
   return 'low';
 }

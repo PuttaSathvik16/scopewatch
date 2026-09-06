@@ -38,15 +38,19 @@ export function renderDiff(diff: CapabilityDiff): string {
       if (isNewTool && changes.length === 1) {
         // Brand-new tool with single destructive capability
         const change = changes[0]!;
-        lines.push(`  • New tool added: ${toolId} with ${change.verb} access to ${change.resource ?? 'default'}`);
+        const confidence = change.provenance === 'inferred' ? 'appears to be added' : 'added';
+        lines.push(`  • New tool ${confidence}: ${toolId} with ${change.verb} access to ${change.resource ?? 'default'}`);
       } else if (isNewTool && changes.length > 1) {
         // Brand-new tool with multiple capabilities
         const verbs = changes.map(c => c.verb).join(', ');
-        lines.push(`  • New tool added: ${toolId} with ${verbs} access`);
+        const isInferred = changes.some(c => c.provenance === 'inferred');
+        const confidence = isInferred ? 'appears to be added' : 'added';
+        lines.push(`  • New tool ${confidence}: ${toolId} with ${verbs} access`);
       } else {
         // Existing tool gaining destructive capability
         for (const change of changes) {
-          lines.push(`  • ${toolId}: now has ${change.verb} access to ${change.resource ?? 'default'}`);
+          const confidence = change.provenance === 'inferred' ? 'appears to have' : 'now has';
+          lines.push(`  • ${toolId}: ${confidence} ${change.verb} access to ${change.resource ?? 'default'}`);
           if (change.previousResource) {
             lines.push(`    (previously read-only or scoped to ${change.previousResource})`);
           }
@@ -145,8 +149,18 @@ export function renderDiff(diff: CapabilityDiff): string {
     const toolIds = new Set(newToolsNotTier1.map(c => c.tool_id));
     for (const toolId of toolIds) {
       const caps = newToolsNotTier1.filter(c => c.tool_id === toolId);
-      const verbs = caps.map(c => c.verb).join(', ');
-      lines.push(`  • ${toolId}: [${verbs}]`);
+      // For single capability, use full phrasing; for multiple, use bracket format
+      if (caps.length === 1) {
+        const cap = caps[0]!;
+        const isInferred = cap.provenance === 'inferred';
+        const confidence = isInferred ? 'appears to add' : 'adds';
+        lines.push(`  • ${toolId} ${confidence} ${cap.verb} access to ${cap.resource ?? 'default'}`);
+      } else {
+        const isInferred = caps.some(c => c.provenance === 'inferred');
+        const confidence = isInferred ? 'appears to add' : 'adds';
+        const verbs = caps.map(c => c.verb).join(', ');
+        lines.push(`  • ${toolId} ${confidence}: [${verbs}]`);
+      }
     }
     lines.push('');
   }
@@ -229,9 +243,11 @@ export function extractSummary(diff: CapabilityDiff): string {
     if (tier1Changes.length > 0) {
       const first = tier1Changes[0]!;
       if (first.isNewTool) {
-        return `New tool added: ${first.tool_id} with ${first.verb} access to ${first.resource ?? 'default'}.`;
+        const confidence = first.provenance === 'inferred' ? 'appears to be added' : 'added';
+        return `New tool ${confidence}: ${first.tool_id} with ${first.verb} access to ${first.resource ?? 'default'}.`;
       }
-      return `${first.tool_id} now has ${first.verb} access to ${first.resource ?? 'default'} (previously read-only).`;
+      const confidence = first.provenance === 'inferred' ? 'appears to have' : 'now has';
+      return `${first.tool_id} ${confidence} ${first.verb} access to ${first.resource ?? 'default'} (previously read-only).`;
     }
   }
 
@@ -281,6 +297,14 @@ export function extractSummary(diff: CapabilityDiff): string {
     const secret = diff.secrets.required_changed[0]!;
     const status = secret.requiredAfter ? 'now required' : 'now optional';
     return `Credential requirement changed: ${secret.secret_id} is ${status} (previously ${!secret.requiredAfter ? 'required' : 'optional'}).`;
+  }
+
+  // New non-destructive capabilities
+  const newNonDestructive = diff.capabilities.added.filter(c => c.severity !== 'categorical_acquisition');
+  if (newNonDestructive.length > 0) {
+    const first = newNonDestructive[0]!;
+    const confidence = first.provenance === 'inferred' ? 'appears to add' : 'adds';
+    return `${first.tool_id} ${confidence} ${first.verb} access to ${first.resource ?? 'default'}.`;
   }
 
   // Fallback

@@ -94,7 +94,7 @@ const fixtures: FixtureTest[] = [
     toFile: 'fixture-09-new-secret-required-to.json',
     expectedSummary: 'requires new credential: SLACK_BOT_TOKEN',
     expectedNewlyDestructive: false,
-    expectedRiskLevel: 'medium',
+    expectedRiskLevel: 'high',
   },
   {
     name: 'Fixture 10: New Tool Reusing Existing Secret',
@@ -119,6 +119,30 @@ const fixtures: FixtureTest[] = [
     expectedSummary: 'No capability changes detected',
     expectedNewlyDestructive: false,
     expectedRiskLevel: 'none',
+  },
+  {
+    name: 'Fixture 13: Multi-Resource Scope Expansion',
+    fromFile: 'fixture-13-multi-resource-scope-from.json',
+    toFile: 'fixture-13-multi-resource-scope-to.json',
+    expectedSummary: 'now has read access to repo:owner/*',
+    expectedNewlyDestructive: false,
+    expectedRiskLevel: 'medium',
+  },
+  {
+    name: 'Fixture 14: Inferred Provenance',
+    fromFile: 'fixture-14-inferred-provenance-from.json',
+    toFile: 'fixture-14-inferred-provenance-to.json',
+    expectedSummary: 'appears to add send access',
+    expectedNewlyDestructive: false,
+    expectedRiskLevel: 'medium',
+  },
+  {
+    name: 'Fixture 15: Multi-Tier Ordering',
+    fromFile: 'fixture-15-multi-tier-from.json',
+    toFile: 'fixture-15-multi-tier-to.json',
+    expectedSummary: 'New tool added: destroyer with execute access',
+    expectedNewlyDestructive: true,
+    expectedRiskLevel: 'high',
   },
 ];
 

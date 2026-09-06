@@ -23,6 +23,25 @@ jobs:
           # product itself would refuse to run on.
           node-version: '22.x'
 
+      - name: Provision a real Secret Service (gnome-keyring) for Linux keychain tests
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gnome-keyring libsecret-tools dbus-x11
+          eval "$(dbus-launch --sh-syntax)"
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+          echo -n "" | gnome-keyring-daemon --unlock --replace --components=secrets
+        # Scopewatch deliberately refuses to store secrets when no real OS
+        # keychain backend exists (no_keychain_backend, Phase D) rather than
+        # fall back to any form of plaintext or custom crypto - correct
+        # product behavior, but it means ubuntu-latest's default image (no
+        # Secret Service running) can't exercise the Linux secret-tool path
+        # or anything built on top of it (install's secret prompt, Journey A,
+        # golden-path, exit-check, runWrapper) at all. This provisions a real
+        # unlocked keyring so those tests run against genuine Linux keychain
+        # behavior, not a skip - Linux is a claimed supported platform, not a
+        # best-effort one.
+
       - name: Install and build (clean, from scratch)
         run: npm install
 

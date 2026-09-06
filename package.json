@@ -9,8 +9,8 @@
     "packages/*"
   ],
   "scripts": {
-    "test": "node --import tsx --test 'packages/**/test/**/*.test.ts' 'apps/**/test/**/*.test.ts'",
-    "test:e2e": "node --import tsx --test 'e2e/**/*.test.ts'",
+    "test": "node --import tsx --test \"packages/**/test/**/*.test.ts\" \"apps/**/test/**/*.test.ts\"",
+    "test:e2e": "node --import tsx --test \"e2e/**/*.test.ts\"",
     "build": "tsc --build && npm run copy-schema --workspace=@scopewatch/state && node -e \"try{require('fs').chmodSync('packages/client-adapters/dist/bin/scopewatch-run.js',0o755)}catch(e){}\"",
     "clean": "tsc --build --clean",
     "lint": "eslint .",

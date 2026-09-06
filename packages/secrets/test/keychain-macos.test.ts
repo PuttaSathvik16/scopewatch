@@ -15,7 +15,14 @@ import type { SpawnFn } from '../src/keychain-macos.js';
 
 const TEST_REF = `scopewatch-test-${process.pid}-${Date.now()}`;
 
-test('macosStore + macosRetrieve: real round-trip through the actual login keychain', async () => {
+// Real-subprocess tests below call `security` with no injected SpawnFn - they
+// only make sense on macOS. Found via a real CI run: with no guard, these ran
+// unconditionally on ubuntu-latest/windows-latest too, where `security`
+// doesn't exist, producing a hard failure indistinguishable at a glance from
+// an actual product bug.
+const REAL_ROUND_TRIP = { skip: process.platform !== 'darwin' ? 'requires the real macOS `security` binary' : false };
+
+test('macosStore + macosRetrieve: real round-trip through the actual login keychain', REAL_ROUND_TRIP, async () => {
   const value = 'real-keychain-round-trip-value';
 
   try {
@@ -32,7 +39,7 @@ test('macosStore + macosRetrieve: real round-trip through the actual login keych
   }
 });
 
-test('macosStore: the secret value never appears in the store subprocess argv', async () => {
+test('macosStore: the secret value never appears in the store subprocess argv', REAL_ROUND_TRIP, async () => {
   // Proves the `-w` (no value) design by construction: capture what argv the
   // real implementation actually passes to spawn, and assert the secret string
   // is not one of those arguments - it can only have reached the child via stdin.
@@ -56,7 +63,7 @@ test('macosStore: the secret value never appears in the store subprocess argv', 
   }
 });
 
-test('macosDelete: cleans up so the test account never lingers in the real keychain', async () => {
+test('macosDelete: cleans up so the test account never lingers in the real keychain', REAL_ROUND_TRIP, async () => {
   macosStore(TEST_REF, 'to-be-deleted');
   const deleteError = macosDelete(TEST_REF);
   strictEqual(deleteError, null);

@@ -125,7 +125,7 @@ scopewatch update <server>
   render the diff — plain language, severity-ordered, grouped by tool
         │
         ▼
-  ⏸  wait for explicit approval (never auto-activate)
+  [PAUSE] wait for explicit approval (never auto-activate)
         │
         ▼
   approved → activate new version   |   declined → stays on current version

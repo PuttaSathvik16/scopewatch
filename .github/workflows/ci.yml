@@ -29,7 +29,7 @@ jobs:
       - name: Verify no stray compiled files landed outside dist/
         shell: bash
         run: |
-          STRAY=$(find packages -path "*/src/*.js" -o -path "*/src/*.d.ts" | grep -v node_modules || true)
+          STRAY=$(find packages -path "*/dist" -prune -o \( -path "*/src/*.js" -o -path "*/src/*.d.ts" \) -print | grep -v node_modules || true)
           if [ -n "$STRAY" ]; then
             echo "Stray compiled files found outside dist/:"
             echo "$STRAY"

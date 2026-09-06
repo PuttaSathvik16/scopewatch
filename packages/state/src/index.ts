@@ -1,8 +1,10 @@
-export { openDatabase } from './db.js';
+export { openDatabase, defaultDbPath } from './db.js';
 export type { SqliteDatabase } from './db.js';
 export { LifecycleEngine } from './lifecycle-engine.js';
-export { insertManifest, getManifest, getManifestByVersion } from './manifest-repo.js';
+export { insertManifest, getManifest, getManifestByVersion, getCurrentManifestFor } from './manifest-repo.js';
 export { insertDiff, getDiff, getDiffObject, listDiffsByRisk } from './diff-repo.js';
+export { recordOwnership, getOwnedKeys, removeOwnership } from './ownership-repo.js';
+export type { OwnershipRow } from './ownership-repo.js';
 export type {
   LifecycleState,
   EventType,

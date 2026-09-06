@@ -32,3 +32,16 @@ export function getManifestByVersion(db: SqliteDatabase, server_id: string, vers
     null
   );
 }
+
+/** The manifest currently on record in lockfile_entries for a (server, client) pair, or null if none. */
+export function getCurrentManifestFor(db: SqliteDatabase, server_id: string, client_id: string): ManifestRow | null {
+  return (
+    (db
+      .prepare(
+        `SELECT m.* FROM manifests m
+         JOIN lockfile_entries le ON le.manifest_id = m.id
+         WHERE le.server_id = ? AND le.client_id = ?`
+      )
+      .get(server_id, client_id) as ManifestRow) ?? null
+  );
+}

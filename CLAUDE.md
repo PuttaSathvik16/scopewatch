@@ -1254,5 +1254,59 @@ has used throughout.
 
 ---
 
+## Precisely diagnosing (not just accepting) the Windows real-subprocess gap
+
+The Windows skip on the real-subprocess Journey A test was initially
+written as "shim scripts and pty allocation are POSIX-only" - true, but not
+precise enough to tell a future reader whether this was a genuine hard
+constraint or something nobody got around to fixing. Pushed to find the
+actual, specific technical reason for each of the two pieces bundled into
+that one sentence, rather than let a real, partially-fixable gap harden
+into an accepted permanent one:
+
+1. **`makeShimBin()`'s POSIX shell scripts (`#!/bin/sh`) - genuinely
+   fixable, not a hard constraint.** Windows' `CreateProcess` has no concept
+   of a shebang line at all; a file with no `.cmd`/`.exe`/`.bat` extension
+   simply isn't executable, which is why the shimmed `npm` reported "not
+   installed or not on PATH" on the first real Windows CI run. Fixed by
+   making `writeShim()` platform-aware: `.cmd` batch files on `win32`
+   (Windows' real equivalent executable-script format, resolved through
+   `PATH`/`PATHEXT` for a bare command name exactly like `.sh` files are on
+   POSIX - confirmed this resolution already works with zero code changes,
+   since the real Windows CI run's `checkPrerequisites()` step had already
+   been calling the real system `npm.cmd` via `execFileSync('npm', [...])`
+   with no `shell: true` all along), `#!/bin/sh` scripts elsewhere.
+2. **`runCliWithTty()`'s Python `pty.spawn` - a genuine hard constraint,
+   confirmed against Python's own documentation, not assumed.** Python's
+   stdlib `pty` module is Unix-only by design (no `ptmx`/`openpty`
+   equivalent exposed for Windows at all - not harder to use there,
+   genuinely absent). The real Windows-native equivalent is ConPTY,
+   reachable only through a native addon (`node-pty` or similar) - not
+   added, for the identical ABI-risk reasoning Phase D used to reject
+   `keytar`/`@napi-rs/keyring` for secrets storage in the first place.
+
+Critically, (2) exists ONLY to satisfy `promptSecret()`'s TTY gate for a
+server that requires a secret - it has nothing to do with
+install/test/activate/update/diff themselves. So rather than accept the
+whole journey as Windows-blind, added a second test running the identical
+journey against a fixture server that declares zero required secrets:
+`install` never calls `promptSecret()` for it, so it never needs a pty at
+all, and runs - and passes - on macOS, Linux, AND Windows. This is what
+actually matters for the reason this test file exists in the first place
+(catching the update/diff/approve wiring bug, see above): that bug had zero
+relationship to secrets, so the coverage that matters most is not
+Windows-blind after all. What Windows genuinely still lacks real coverage
+for, precisely and only, is the interactive secret-prompt path during
+`install` for a server that requires one - stated here as the actual
+remaining gap, not "Windows real-subprocess support" in general.
+
+Verified locally (macOS): both tests green in the same run (`ok 1`/`ok 2`),
+full suite 185/185, no leaked processes or keychain entries. Real CI
+confirmation on Windows (the no-secret variant should pass there; the
+secret-required variant should report `skip`, not `fail`) is the next step
+before this is considered closed.
+
+---
+
 **Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅, Phase D ✅, Phase E ✅, Phase F ✅, Phase G ✅, Phase H ✅, Phase I ✅ complete - MVP acceptance: 8/9, 9th blocked on external infra)  
 **Commits:** 21 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix + Phase E install adapter + phase labeling fix + Phase D secrets + dist-smoke build-verification fix + Phase F client adapters + Phase F golden-path proof + Phase G capability inference + Phase G inference hardening + Phase G override narrowing + Phase G CLI surface + Phase G minimal-env security fix + Phase H drift reconciler + Phase I diagnostics/docs + Phase I command-wiring audit)

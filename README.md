@@ -279,11 +279,19 @@ bug slipped through before the check existed:
   actually exercise** (`security` only runs where `security` exists), so a
   test failing on the "wrong" OS is a real signal, not noise to ignore.
 
-Windows real-subprocess coverage for the Journey A test above is a known,
-stated gap (its isolation strategy — POSIX shell shims, a Python-`pty`-based
-pseudo-terminal — is POSIX-only by construction); the underlying commands
-it exercises are still fully proven on macOS and Linux, and this is
-documented in [CLAUDE.md](CLAUDE.md) rather than silently skipped.
+The real-subprocess Journey A test runs in two forms: one against a server
+that requires a secret, and one against a server that requires none. Only
+the secret-requiring form is skipped on Windows — and only because it
+needs a real pseudo-terminal to satisfy the secret prompt's TTY guard,
+which requires Python's `pty` module (genuinely Unix-only, by Python's own
+documentation) or a native ConPTY addon this project deliberately doesn't
+add (the same ABI-risk reasoning that ruled out native keychain addons).
+The secret-free form of the same journey — install through diff, the exact
+path that once let the whole `update`/`diff`/`approve` command surface ship
+unreachable — runs and passes on Windows too. The precise, remaining gap is
+narrow: only the interactive secret-prompt path during `install` lacks real
+Windows subprocess coverage, not the journey as a whole. Full reasoning in
+[CLAUDE.md](CLAUDE.md).
 
 ## Security model, in short
 

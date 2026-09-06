@@ -12,7 +12,9 @@
       "Bash(npm --version)",
       "Bash(awk '/add-generic-password/{found=1} found{print} found && /^     [a-z-]+$/ && !/add-generic-password/{exit}')",
       "Bash(node /tmp/mcp-probe.mjs)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Bash(node --import tsx --test apps/cli/test/journey-a-real-subprocess.test.ts)",
+      "Bash(echo \"exit: $?\")"
     ],
     "additionalDirectories": [
       "/tmp"

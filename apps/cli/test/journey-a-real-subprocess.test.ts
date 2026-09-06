@@ -446,6 +446,26 @@ test(
     };
 
     try {
+      // TEMPORARY diagnostic: cmdDoctor masks the real underlying spawn
+      // error into a generic "npm is not installed" message regardless of
+      // cause, which has made two real CI iterations blind. Call the shim
+      // directly (both by bare name through PATH, and by absolute path) and
+      // print the raw error so the actual cause is visible in CI output.
+      if (IS_WINDOWS) {
+        try {
+          const r1 = await execFileAsync('npm', ['--version'], { env: baseEnv, encoding: 'utf-8' });
+          console.error('[DIAG] bare "npm" via PATH succeeded:', JSON.stringify(r1));
+        } catch (e: any) {
+          console.error('[DIAG] bare "npm" via PATH failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
+        }
+        try {
+          const r2 = await execFileAsync(join(shimDir, 'npm.cmd'), ['--version'], { env: baseEnv, encoding: 'utf-8' });
+          console.error('[DIAG] absolute npm.cmd succeeded:', JSON.stringify(r2));
+        } catch (e: any) {
+          console.error('[DIAG] absolute npm.cmd failed:', JSON.stringify({ code: e.code, message: e.message, path: e.path, spawnargs: e.spawnargs }));
+        }
+      }
+
       const doctorResult = await runCli(['doctor'], baseEnv);
       strictEqual(doctorResult.code, 0, `doctor should succeed via the real binary. stderr: ${doctorResult.stderr}`);
       ok(doctorResult.stdout.includes('22.5.0'), `Expected the real (shimmed) version in doctor's real output. Got: "${doctorResult.stdout}"`);

@@ -144,6 +144,14 @@ const fixtures: FixtureTest[] = [
     expectedNewlyDestructive: true,
     expectedRiskLevel: 'high',
   },
+  {
+    name: 'Fixture 16: Multi-Resource Stable (No Change)',
+    fromFile: 'fixture-16-multi-resource-stable-from.json',
+    toFile: 'fixture-16-multi-resource-stable-to.json',
+    expectedSummary: 'No capability changes detected',
+    expectedNewlyDestructive: false,
+    expectedRiskLevel: 'none',
+  },
 ];
 
 for (const fixture of fixtures) {

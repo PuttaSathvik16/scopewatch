@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git commit -m 'Phase B documentation: update to reflect completion with all items 1-6 resolved *)",
+      "Bash(node -e \"try { require\\('node:sqlite'\\); console.log\\('node:sqlite available \\(CJS\\)'\\); } catch\\(e\\) { console.log\\('CJS fail:', e.message\\); }\")",
+      "Bash(node -e \"import\\('node:sqlite'\\).then\\(\\(\\)=>console.log\\('node:sqlite available \\(ESM\\)'\\)\\).catch\\(e=>console.log\\('ESM fail:', e.message\\)\\)\")",
+      "Bash(node -e ' *)"
     ]
   }
 }

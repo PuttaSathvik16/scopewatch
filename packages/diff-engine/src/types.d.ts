@@ -10,6 +10,7 @@ export type CapabilityChange = {
     severity: 'categorical_acquisition' | 'scope_expansion' | 'scope_narrowing' | 'cosmetic';
     provenance: Provenance;
     previousResource: string | undefined;
+    isNewTool?: boolean;
 };
 /**
  * A single credential changed between two versions.

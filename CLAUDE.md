@@ -227,7 +227,44 @@ All 24 tests passing (15 Phase B fixtures + 9 Phase A validation tests). Diff ou
 
 ## Deviations from Brief (none yet)
 
+## Build Infrastructure Fix (2026-09-06)
+
+**Root cause found and fixed:** the root `package.json`'s `prepare` script ran
+`tsc --build` against the root `tsconfig.json`, which had no `outDir`, no
+`include`/`exclude`, and no project `references`. This caused it to silently
+pick up every `.ts` file across all packages and compile each one **in place**
+inside `src/`, ignoring each package's own `outDir: "./dist"`. This ran on
+every `npm install` (via the `prepare` lifecycle hook), which is why compiled
+`.js`/`.d.ts` files kept reappearing next to source and drifting out of sync
+with the real `dist/` output whenever source changed without a manual rebuild.
+
+**Fix:** converted the workspace to a proper TypeScript composite project:
+- Every package `tsconfig.json` now sets `"composite": true`
+- `diff-engine` declares `"references": [{ "path": "../manifest" }]` (its real
+  dependency); `state` currently has no cross-package imports, so no
+  references were added there — do not add them speculatively
+- Root `tsconfig.json` is now a pure solution file: `"files": []` plus
+  `"references"` to all three packages, so `tsc --build` at the root
+  topologically builds each package into its own `dist/` and does nothing else
+- Removed all git-tracked compiled `.js`/`.d.ts`/`.map` files from `src/` and
+  `test/` directories across all three packages - `dist/` (already gitignored)
+  is now the only place compiled output exists
+
+**Verified:** `find packages -name "*.tsbuildinfo" -delete && rm -rf packages/*/dist && npm install`
+rebuilds cleanly with zero files landing outside `dist/`. Full test suite
+(37/37) still passes - tests run against `.ts` source directly via `tsx`, so
+they were never affected by this drift, but the committed artifacts a
+consumer of these packages would actually import (`main`/`types` in each
+`package.json` point at `./dist/...`) were silently stale until now.
+
+**Outstanding requirement (no CI exists yet, so not built now):** once CI is
+set up, add a step that does a clean build and diffs the result against
+whatever is committed (if anything ever needs to be committed again - under
+the current setup nothing in `dist/` is committed, so this reduces to "clean
+build succeeds with no tsc errors," but the check should still exist
+explicitly rather than being assumed).
+
 ---
 
-**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅ complete)  
-**Commits:** 3 (Phase A foundation + Phase B implementation + Phase B fixes)
+**Last updated:** 2026-09-06 (Phase A ✅, Phase B ✅, Phase C ✅ complete)  
+**Commits:** 6 (Phase A + Phase B implementation/fixes + Phase C lifecycle engine/fixes + build infra fix)

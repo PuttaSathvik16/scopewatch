@@ -1,4 +1,4 @@
-export type LifecycleState = 'discovered' | 'reviewed' | 'installed' | 'configured' | 'validated' | 'active' | 'disabled' | 'removed';
+export type LifecycleState = 'discovered' | 'reviewed' | 'installed' | 'configured' | 'validated' | 'active' | 'updated' | 'disabled' | 'removed';
 export type EventType = 'transition_intent' | 'transition_confirmed' | 'transition_failed' | 'recovery' | 'rollback';
 export type RiskLevel = 'none' | 'low' | 'medium' | 'high';
 export type ManifestRow = {

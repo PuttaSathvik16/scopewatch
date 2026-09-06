@@ -40,14 +40,16 @@ test('Migration runs clean against a fresh database file', () => {
   ok(tables.includes('lifecycle_events'), 'lifecycle_events table exists');
   ok(tables.includes('schema_migrations'), 'schema_migrations table exists');
 
-  const migrations = db.prepare('SELECT version FROM schema_migrations').all();
-  strictEqual(migrations.length, 1, 'exactly one migration applied');
+  const migrations = db.prepare('SELECT version FROM schema_migrations ORDER BY version').all() as { version: number }[];
+  strictEqual(migrations.length, 2, 'both migrations applied (001 initial schema, 002 adds updated state)');
+  strictEqual(migrations[0]!.version, 1);
+  strictEqual(migrations[1]!.version, 2);
 
   // Re-opening the same file should be a no-op (idempotent migrations)
   db.close();
   const db2 = openDatabase(dbPath);
   const migrations2 = db2.prepare('SELECT version FROM schema_migrations').all();
-  strictEqual(migrations2.length, 1, 'reopening does not re-apply migrations');
+  strictEqual(migrations2.length, 2, 'reopening does not re-apply migrations');
   db2.close();
 
   rmSync(dbPath, { force: true });
@@ -94,11 +96,11 @@ test('Server can be pushed through every lifecycle state and back', () => {
 
   // Now go through an update cycle: active -> updated -> active
   const manifestId2 = seedManifest(db, server_id, '1.1.0');
-  const updateIntent = engine.startTransition(server_id, client_id, 'active', 'reviewed', null);
+  const updateIntent = engine.startTransition(server_id, client_id, 'active', 'updated', null);
   engine.confirmTransition(updateIntent, manifestId2);
-  strictEqual(engine.getState(server_id, client_id), 'reviewed');
+  strictEqual(engine.getState(server_id, client_id), 'updated');
 
-  const reactivateIntent = engine.startTransition(server_id, client_id, 'reviewed', 'active', null);
+  const reactivateIntent = engine.startTransition(server_id, client_id, 'updated', 'active', null);
   engine.confirmTransition(reactivateIntent, manifestId2);
   strictEqual(engine.getState(server_id, client_id), 'active');
 
@@ -115,7 +117,7 @@ test('Server can be pushed through every lifecycle state and back', () => {
   const events = engine.getEvents(server_id, client_id);
   const intents = events.filter((e) => e.event_type === 'transition_intent');
   const confirmed = events.filter((e) => e.event_type === 'transition_confirmed');
-  // 5 initial (discovered->active) + update (active->reviewed) + reactivate (reviewed->active)
+  // 5 initial (discovered->active) + update (active->updated) + reactivate (updated->active)
   // + disable (active->disabled) + remove (disabled->removed) = 9
   strictEqual(intents.length, 9, 'nine transitions attempted');
   strictEqual(confirmed.length, 9, 'nine transitions confirmed');
@@ -209,10 +211,10 @@ test('rollback restores the last checkpoint and records a rollback event', () =>
   }
   strictEqual(engine.getState(server_id, client_id), 'active');
 
-  // Begin an update: active -> reviewed (creates a checkpoint of the v1 active state)
-  const updateIntent = engine.startTransition(server_id, client_id, 'active', 'reviewed', null);
+  // Begin an update: active -> updated (creates a checkpoint of the v1 active state)
+  const updateIntent = engine.startTransition(server_id, client_id, 'active', 'updated', null);
   engine.confirmTransition(updateIntent, manifestV2);
-  strictEqual(engine.getState(server_id, client_id), 'reviewed');
+  strictEqual(engine.getState(server_id, client_id), 'updated');
 
   // Now roll back
   engine.rollback(server_id, client_id);
@@ -249,7 +251,7 @@ test('rollback refuses when a transition is unresolved (invariant check)', () =>
   }
 
   // Start an update but never confirm it (unresolved)
-  engine.startTransition(server_id, client_id, 'active', 'reviewed', null);
+  engine.startTransition(server_id, client_id, 'active', 'updated', null);
 
   throws(
     () => engine.rollback(server_id, client_id),
@@ -322,12 +324,14 @@ test('Crash point 2: kill after intent+checkpoint commit, before confirmation (a
   }
   strictEqual(engine1.getState(server_id, client_id), 'active');
 
-  // Begin update: active -> reviewed. This commits the intent AND a checkpoint
-  // (of the active/v1 state) atomically, in one transaction - this is the real
-  // guarantee under test. Simulate the "side effect" as a no-op we never await
-  // to completion (nothing to interrupt mid-flight since Phase C has no real I/O
-  // yet - the process simply dies here, before confirmTransition is ever called).
-  const intentId = engine1.startTransition(server_id, client_id, 'active', 'reviewed', null, [
+  // Begin update: active -> updated (the state for showing a diff when an
+  // already-active server has a new version available - distinct from 'reviewed',
+  // which is the one-time pre-install review state). This commits the intent AND
+  // a checkpoint (of the active/v1 state) atomically, in one transaction - this is
+  // the real guarantee under test. Simulate the "side effect" as a no-op we never
+  // await to completion (nothing to interrupt mid-flight since Phase C has no real
+  // I/O yet - the process simply dies here, before confirmTransition is ever called).
+  const intentId = engine1.startTransition(server_id, client_id, 'active', 'updated', null, [
     'write_client_config', // simulated Phase F side effect name, never executed
   ]);
   ok(intentId > 0);
@@ -347,7 +351,7 @@ test('Crash point 2: kill after intent+checkpoint commit, before confirmation (a
   engine2.onStartup();
 
   // Recovery must have restored the lockfile to the checkpoint (v1, active) -
-  // NOT left it in 'reviewed' with v2, which never got confirmed.
+  // NOT left it in 'updated' with v2, which never got confirmed.
   strictEqual(engine2.getState(server_id, client_id), 'active', 'recovery restores active state from checkpoint');
   const entry = db2
     .prepare('SELECT manifest_id FROM lockfile_entries WHERE server_id = ? AND client_id = ?')
@@ -429,7 +433,7 @@ test('Crash point 4: recovery is idempotent under a repeated/interrupted restart
   }
 
   // Begin an update, crash before confirm (checkpoint created)
-  const intentId = engine1.startTransition(server_id, client_id, 'active', 'reviewed', null);
+  const intentId = engine1.startTransition(server_id, client_id, 'active', 'updated', null);
   db1.close();
 
   // First restart: recovery runs and resolves it (simulates recovery itself being

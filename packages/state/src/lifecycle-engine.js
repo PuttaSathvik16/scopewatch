@@ -39,8 +39,11 @@ export class LifecycleEngine {
      * atomically together).
      */
     onStartup() {
+        // Must scan lifecycle_events, not lockfile_entries: a crash during a pair's very
+        // FIRST transition (before any confirmTransition ever ran) means lockfile_entries
+        // has no row for that pair yet, even though an unresolved intent exists.
         const pairs = this.db
-            .prepare('SELECT DISTINCT server_id, client_id FROM lockfile_entries')
+            .prepare('SELECT DISTINCT server_id, client_id FROM lifecycle_events')
             .all();
         for (const { server_id, client_id } of pairs) {
             const unresolved = this.getUnresolvedIntentInternal(server_id, client_id);

@@ -1301,10 +1301,82 @@ for, precisely and only, is the interactive secret-prompt path during
 remaining gap, not "Windows real-subprocess support" in general.
 
 Verified locally (macOS): both tests green in the same run (`ok 1`/`ok 2`),
-full suite 185/185, no leaked processes or keychain entries. Real CI
-confirmation on Windows (the no-secret variant should pass there; the
-secret-required variant should report `skip`, not `fail`) is the next step
-before this is considered closed.
+full suite 185/185, no leaked processes or keychain entries.
+
+**Real Windows CI confirmation surfaced a second, much more significant bug
+than the one being chased.** The first Windows CI attempt at the
+cross-platform (no-secret) test still failed - "npm is not installed or not
+on PATH" - even after fixing the `.cmd`-vs-`#!/bin/sh` shim format and a
+real batch-script bug (a `goto`/label nested inside a parenthesized `if`
+block, which corrupts `cmd.exe`'s whole-file parse, not just that block -
+found by reasoning, since no Windows machine was available to test
+directly). Rather than keep guessing, added a temporary diagnostic
+directly into the test to capture the *raw* spawn error (`cmdDoctor`
+had been masking every failure into one generic message, blinding two
+prior debugging iterations). The raw error proved this was never a
+test-harness problem at all:
+
+```
+[DIAG] bare "npm" via PATH failed: {"code":"ENOENT", ...}
+[DIAG] absolute npm.cmd failed: {"code":"EINVAL", ...}
+[DIAG] REAL system npm (no custom PATH) failed: {"code":"ENOENT", ...}
+```
+
+The third line is the damning one: even the REAL system npm - the one
+`actions/setup-node` had just installed, with zero custom PATH override -
+failed to resolve via a bare `execFileSync('npm', [...])`. **This meant
+`scopewatch doctor` and `scopewatch install` had never actually worked on
+any real Windows machine, ever** - not a gap in this test's coverage, a
+real defect in shipped product code. Root cause, confirmed precisely:
+`npm`/`npx` ship as `.cmd` files on Windows, and Node's automatic
+bare-command PATH resolution (active whenever `spawn`/`execFile` is called
+without `shell: true`) deliberately only searches for real executables
+(`.exe`/`.com`) - `.cmd`/`.bat` targets require `shell: true` or an
+explicit `cmd.exe` wrapper, by Node's own design, for security reasons.
+This had never been caught because every existing unit test injects a fake
+runner, and the one test that ever calls real npm
+(`e2e/install-adapter-real-npm.test.ts`) only runs on `ubuntu-latest`.
+
+Fixed with `shell: true` (Windows-only) at all four real spawn sites,
+found via an exhaustive grep for every real (non-test, non-injected)
+`spawn`/`execFile`/`execFileSync` call in the codebase - not assumed to be
+isolated to the one call site that happened to surface first:
+
+- `apps/cli/src/real-runners.ts` (`realCommandRunner`, `realInstallRunner`)
+  - `doctor` and `install`'s prerequisite/npm-install checks
+- `apps/cli/src/mcp-client.ts` (`defaultSpawn`) - the real MCP handshake,
+  frequently invoking `npx`
+- `packages/client-adapters/src/run-wrapper.ts` (`defaultSpawn`) - **the
+  actual runtime wrapper a real client (Claude Code/Cursor) spawns to
+  launch a real MCP server** - arguably the single most consequential of
+  the four, since this is what runs every time a real user's client starts
+  a server, not just during install
+- `packages/install-adapters/src/prerequisites.ts` (`defaultRunner`) - the
+  package's own public-API default, fixed for consistency even though the
+  CLI doesn't currently use it
+
+`shell: true` is safe here: this project's Node floor is 22.0.0, well past
+the `cmd.exe` argument-escaping fix in CVE-2024-27980. Checked every other
+real spawn call in the codebase (the macOS/Linux/Windows keychain calls -
+`security`, `secret-tool`, `powershell.exe`) and confirmed none of them
+need this fix, since all three are real native executables, not
+`.cmd`/`.bat` scripts.
+
+Verified: full suite 185/185 locally on macOS after the fix. Real Windows
+CI re-run confirmed both real-subprocess tests behave exactly as designed -
+`ok 7 ... # SKIP pty allocation for the secret prompt is POSIX-only`
+(precise, not a generic "Windows unsupported") and `ok 8` (the no-secret
+variant) genuinely passing for real, install through diff, on Windows.
+
+**The actual lesson of this whole detour**: the original ask was "why is
+one test skipped on Windows" - a reasonable question about test coverage.
+Answering it rigorously (get the real error, don't accept "POSIX-only" as
+a black box) surfaced a real product defect that would have shipped
+undetected, exactly the same shape as the update/diff/approve wiring gap
+this test file exists to catch in the first place. Precision in diagnosing
+a "small" gap found a "big" one underneath it - the same pattern that has
+recurred throughout this build every time a plausible-sounding first guess
+was checked against real evidence instead of accepted.
 
 ---
 

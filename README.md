@@ -145,7 +145,19 @@ these requirements.
 
 ## Quickstart
 
-Scopewatch isn't published to npm yet - install it from source:
+Install globally from npm:
+
+```bash
+npm install -g @scopewatch/cli
+```
+
+Or run it without installing:
+
+```bash
+npx -y @scopewatch/cli --help
+```
+
+To build from source instead:
 
 ```bash
 git clone https://github.com/PuttaSathvik16/scopewatch.git

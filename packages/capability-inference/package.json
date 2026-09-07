@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/capability-inference",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Heuristic capability inference from real MCP tools/list data, for servers without declared capability metadata",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -22,6 +22,7 @@
     "dist"
   ],
   "scripts": {
+    "prepublishOnly": "cd ../.. && npm run build",
     "build": "tsc",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "clean": "rm -rf dist"

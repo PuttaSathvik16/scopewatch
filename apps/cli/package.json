@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/cli",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Scopewatch CLI: search, install, test, activate, update, diff, rollback, status",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -24,7 +24,7 @@
   },
   "dependencies": {
     "@scopewatch/capability-inference": "0.0.2",
-    "@scopewatch/client-adapters": "0.0.2",
+    "@scopewatch/client-adapters": "0.0.3",
     "@scopewatch/diff-engine": "0.0.2",
     "@scopewatch/install-adapters": "0.0.2",
     "@scopewatch/manifest": "0.0.2",

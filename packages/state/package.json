@@ -2,6 +2,13 @@
   "name": "@scopewatch/state",
   "version": "0.0.1",
   "description": "SQLite state, lockfile, and lifecycle engine",
+  "license": "MIT",
+  "author": "Sathvik Putta <puttasathvik16@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PuttaSathvik16/scopewatch.git",
+    "directory": "packages/state"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -16,7 +23,7 @@
   ],
   "scripts": {
     "build": "tsc && npm run copy-schema",
-    "copy-schema": "node -e \"require('fs').cpSync('src/schema','dist/schema',{recursive:true})\"",
+    "copy-schema": "mkdir -p dist/schema && cp -r src/schema/. dist/schema/",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "clean": "rm -rf dist"
   },

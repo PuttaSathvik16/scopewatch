@@ -2,6 +2,13 @@
   "name": "@scopewatch/install-adapters",
   "version": "0.0.1",
   "description": "npm/npx install adapter: prerequisite detection and categorized install diagnostics",
+  "license": "MIT",
+  "author": "Sathvik Putta <puttasathvik16@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PuttaSathvik16/scopewatch.git",
+    "directory": "packages/install-adapters"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

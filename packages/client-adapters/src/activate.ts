@@ -4,11 +4,24 @@ import { mergeConfig, readConfigFile, writeConfigFile } from './config-writer.js
 import type { ServerConfigEntry } from './config-writer.js';
 import { CLAUDE_CODE_CLIENT_ID, claudeCodeConfigPath } from './claude-code-adapter.js';
 import { CURSOR_CLIENT_ID, cursorConfigPath } from './cursor-adapter.js';
+import { VSCODE_CLIENT_ID, vscodeConfigPath } from './vscode-adapter.js';
 
 export function configPathFor(client_id: string, projectRoot: string): string {
   if (client_id === CLAUDE_CODE_CLIENT_ID) return claudeCodeConfigPath(projectRoot);
   if (client_id === CURSOR_CLIENT_ID) return cursorConfigPath(projectRoot);
+  if (client_id === VSCODE_CLIENT_ID) return vscodeConfigPath(projectRoot);
   throw new Error(`Unknown client_id: ${client_id}`);
+}
+
+/**
+ * The top-level object key each client's config file holds server entries
+ * under. Claude Code and Cursor both use "mcpServers"; VS Code's real format
+ * uses "servers" instead (see vscode-adapter.ts) - this is where that
+ * difference is threaded through to mergeConfig/drift detection.
+ */
+export function configKeyFor(client_id: string): string {
+  if (client_id === VSCODE_CLIENT_ID) return 'servers';
+  return 'mcpServers';
 }
 
 /**
@@ -41,7 +54,7 @@ export function activateForClient(db: SqliteDatabase, server_id: string, client_
   const ownedKeys = getOwnedKeys(db, client_id, configPath);
 
   const existing = readConfigFile(configPath);
-  const updated = mergeConfig(existing, ownedKeys, { [server_id]: entry });
+  const updated = mergeConfig(existing, ownedKeys, { [server_id]: entry }, configKeyFor(client_id));
   writeConfigFile(configPath, updated);
 }
 
@@ -52,7 +65,7 @@ export function deactivateForClient(db: SqliteDatabase, server_id: string, clien
 
   const existing = readConfigFile(configPath);
   if (existing !== null && ownedKeys.has(server_id)) {
-    const updated = mergeConfig(existing, ownedKeys, { [server_id]: null });
+    const updated = mergeConfig(existing, ownedKeys, { [server_id]: null }, configKeyFor(client_id));
     writeConfigFile(configPath, updated);
   }
 

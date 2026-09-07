@@ -7,16 +7,19 @@ import { openDatabase } from '@scopewatch/state';
 import { activateForClient, deactivateForClient, configPathFor } from '../src/activate.js';
 import { CLAUDE_CODE_CLIENT_ID, claudeCodeConfigPath } from '../src/claude-code-adapter.js';
 import { CURSOR_CLIENT_ID, cursorConfigPath } from '../src/cursor-adapter.js';
+import { VSCODE_CLIENT_ID, vscodeConfigPath } from '../src/vscode-adapter.js';
 
-test('configPathFor: correct paths for both clients', () => {
+test('configPathFor: correct paths for all three clients', () => {
   // Found via a real Windows CI run: this test hardcoded POSIX separators
   // while the real functions correctly use path.join (native separators per
   // platform) - a test bug, not a product bug. join() here makes the
   // expectation match whatever the current platform actually produces.
   strictEqual(configPathFor(CLAUDE_CODE_CLIENT_ID, '/my/project'), join('/my/project', '.mcp.json'));
   strictEqual(configPathFor(CURSOR_CLIENT_ID, '/my/project'), join('/my/project', '.cursor', 'mcp.json'));
+  strictEqual(configPathFor(VSCODE_CLIENT_ID, '/my/project'), join('/my/project', '.vscode', 'mcp.json'));
   strictEqual(claudeCodeConfigPath('/my/project'), join('/my/project', '.mcp.json'));
   strictEqual(cursorConfigPath('/my/project'), join('/my/project', '.cursor', 'mcp.json'));
+  strictEqual(vscodeConfigPath('/my/project'), join('/my/project', '.vscode', 'mcp.json'));
 });
 
 test('activateForClient: creates .mcp.json for Claude Code with the wrapper command', () => {
@@ -95,6 +98,28 @@ test('activateForClient: never touches a pre-existing human-authored entry in th
     const config = JSON.parse(readFileSync(configPath, 'utf-8'));
     deepStrictEqual(config.mcpServers['my-own-tool'], { command: 'python', args: ['my_tool.py'] });
     ok(config.mcpServers['scopewatch-managed-server']);
+  } finally {
+    db.close();
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('activateForClient: creates .vscode/mcp.json for VS Code under the "servers" key, not "mcpServers"', () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), 'scopewatch-activate-'));
+  const dbPath = join(projectRoot, 'state.db');
+  const db = openDatabase(dbPath);
+
+  try {
+    activateForClient(db, 'my-server', VSCODE_CLIENT_ID, projectRoot);
+
+    const configPath = join(projectRoot, '.vscode', 'mcp.json');
+    ok(existsSync(configPath), '.vscode/ directory should be created automatically');
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    // VS Code's real config format uses "servers", not "mcpServers" - verified
+    // against code.visualstudio.com's own docs before implementing. Getting
+    // this key wrong would mean VS Code silently never sees the entry at all.
+    deepStrictEqual(config.servers['my-server'], { command: 'scopewatch-run', args: ['my-server', 'vscode'] });
+    strictEqual(config.mcpServers, undefined, 'must not write under "mcpServers" - VS Code would never read it there');
   } finally {
     db.close();
     rmSync(projectRoot, { recursive: true, force: true });

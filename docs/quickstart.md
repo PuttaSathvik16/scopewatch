@@ -67,9 +67,10 @@ scopewatch activate <server-name> --client claude-code
 ```
 
 Writes the server into your client's config file (`.mcp.json` for Claude
-Code, `.cursor/mcp.json` for Cursor), pointing at the `scopewatch-run`
-wrapper — never the raw server binary — so your keychain-stored secrets
-reach the process without ever touching the config file itself.
+Code, `.cursor/mcp.json` for Cursor, `.vscode/mcp.json` for VS Code
+Copilot), pointing at the `scopewatch-run` wrapper — never the raw server
+binary — so your keychain-stored secrets reach the process without ever
+touching the config file itself.
 
 ## 7. Weeks later: check for updates
 

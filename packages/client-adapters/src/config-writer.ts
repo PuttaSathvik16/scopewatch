@@ -19,11 +19,17 @@ export type ServerConfigEntry = {
  * (remove, e.g. on deactivation). Every key in `updates` MUST be present in
  * `ownedKeys` - this function refuses (throws) rather than silently writing
  * an unowned key, as a defense-in-depth check against caller bugs.
+ *
+ * `topLevelKey` names the object that holds server entries - "mcpServers"
+ * for Claude Code/Cursor, but VS Code's real config format uses "servers"
+ * instead (verified against VS Code's own docs, not assumed). Defaults to
+ * "mcpServers" so existing callers/tests are unaffected.
  */
 export function mergeConfig(
   existingFileContent: string | null,
   ownedKeys: ReadonlySet<string>,
-  updates: Record<string, ServerConfigEntry | null>
+  updates: Record<string, ServerConfigEntry | null>,
+  topLevelKey: string = 'mcpServers'
 ): string {
   for (const key of Object.keys(updates)) {
     if (!ownedKeys.has(key)) {
@@ -35,17 +41,17 @@ export function mergeConfig(
   }
 
   const existing: Record<string, unknown> = existingFileContent ? JSON.parse(existingFileContent) : {};
-  const mcpServers: Record<string, unknown> = { ...(existing.mcpServers as Record<string, unknown> | undefined) };
+  const servers: Record<string, unknown> = { ...(existing[topLevelKey] as Record<string, unknown> | undefined) };
 
   for (const [key, entry] of Object.entries(updates)) {
     if (entry === null) {
-      delete mcpServers[key];
+      delete servers[key];
     } else {
-      mcpServers[key] = entry;
+      servers[key] = entry;
     }
   }
 
-  return JSON.stringify({ ...existing, mcpServers }, null, 2) + '\n';
+  return JSON.stringify({ ...existing, [topLevelKey]: servers }, null, 2) + '\n';
 }
 
 /** Read a config file's raw content, or null if it doesn't exist yet. */

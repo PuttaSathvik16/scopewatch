@@ -2,11 +2,16 @@
 
 ## Supported clients (v1)
 
-Scopewatch supports exactly two agent clients: **Claude Code** and
-**Cursor**. This is a deliberate v1 limit (Section 1 of the product brief),
-not an oversight — supporting "every client" was explicitly cut to keep the
-capability-diff promise correct and well-tested for a small, real set of
-targets rather than thinly correct for many.
+Scopewatch supports three agent clients: **Claude Code**, **Cursor**, and
+**VS Code Copilot** (agent mode). Supporting "every client" was explicitly
+cut to keep the capability-diff promise correct and well-tested for a
+small, real set of targets rather than thinly correct for many — this list
+grows deliberately, one verified client at a time, not by default.
+
+Note VS Code's real config format uses a different top-level key
+(`"servers"`) than Claude Code and Cursor's shared `"mcpServers"` — verified
+against VS Code's own documentation before implementing, not assumed from
+the other two clients' shape.
 
 ## Project scope only
 
@@ -14,10 +19,11 @@ Scopewatch **only activates servers at project scope**:
 
 - Claude Code: writes to `.mcp.json` at your project's root.
 - Cursor: writes to `.cursor/mcp.json` at your project's root.
+- VS Code: writes to `.vscode/mcp.json` at your project's root.
 
-Scopewatch **never writes to either client's global/user-scope config**
-(`~/.claude.json` for Claude Code, `~/.cursor/mcp.json` for Cursor). This is
-a deliberate v1 limitation:
+Scopewatch **never writes to any client's global/user-scope config**
+(`~/.claude.json` for Claude Code, `~/.cursor/mcp.json` for Cursor, VS
+Code's user-profile `mcp.json`). This is a deliberate v1 limitation:
 
 - Claude Code's `~/.claude.json` is a single file spanning every project on
   your machine, mixed with unrelated, non-MCP settings — a much higher-risk

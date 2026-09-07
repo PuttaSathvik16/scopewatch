@@ -5,6 +5,7 @@ import {
   type SqliteDatabase,
 } from '@scopewatch/state';
 import { readConfigFile, writeConfigFile, mergeConfig, type ServerConfigEntry } from './config-writer.js';
+import { configKeyFor } from './activate.js';
 import { getOwnedKeys } from '@scopewatch/state';
 import type { DriftEntry, DriftStatus } from './drift.js';
 
@@ -79,7 +80,12 @@ export function resolveDriftEntry(db: SqliteDatabase, entry: DriftEntry, resolut
 function restoreEntry(db: SqliteDatabase, entry: DriftEntry): ResolveResult {
   const ownedKeys = getOwnedKeys(db, entry.client_id, entry.config_file_path);
   const existing = readConfigFile(entry.config_file_path);
-  const updated = mergeConfig(existing, ownedKeys, { [entry.config_key]: entry.storedSnapshot as ServerConfigEntry });
+  const updated = mergeConfig(
+    existing,
+    ownedKeys,
+    { [entry.config_key]: entry.storedSnapshot as ServerConfigEntry },
+    configKeyFor(entry.client_id)
+  );
   writeConfigFile(entry.config_file_path, updated);
   return { ok: true };
 }

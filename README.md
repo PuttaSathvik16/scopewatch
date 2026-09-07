@@ -106,7 +106,8 @@ These are stated, deliberate scope cuts for v1 - not oversights:
  -  No profiles, team sharing, or multi - user workflows
  -  No crowdsourced compatibility matrix, no runtime policy guard
  -  No Docker/container install path - npm/npx is the only install adapter
- -  Two agent clients supported: **Claude Code** and **Cursor**
+ -  Three agent clients supported: **Claude Code**, **Cursor**, and **VS Code
+  Copilot** (agent mode)
  -  **Project scope only** for client config - Scopewatch never writes to
   global config shared across every project on your machine (see
   [docs/supported - matrix.md](docs/supported - matrix.md))
@@ -230,7 +231,7 @@ expected output at each step.
 | `init` | Initializes local Scopewatch state |
 
 Every command accepts ` -  - client <id>` to target a specific client
-(`claude - code` or `cursor`); it defaults to Claude Code.
+(`claude - code`, `cursor`, or `vscode`); it defaults to Claude Code.
 
 ## Project structure
 
@@ -245,7 +246,7 @@ scopewatch/
     local - api/                # typed service layer used by the CLI
     state/                    # SQLite repositories, migrations, lockfile handling
     secrets/                  # OS keychain abstraction, redaction, secure prompting
-    client - adapters/          # Claude Code + Cursor config writers, drift detection/resolution, scopewatch - run wrapper
+    client - adapters/          # Claude Code + Cursor + VS Code config writers, drift detection/resolution, scopewatch - run wrapper
     install - adapters/         # npm/npx install adapter, categorized failure detection
   docs/                    # quickstart, security model, supported matrix, inference limits
   e2e/                     # real - registry / real - npm smoke tests (separate cadence from unit tests)

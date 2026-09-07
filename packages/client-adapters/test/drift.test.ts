@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { openDatabase, insertManifest, LifecycleEngine } from '@scopewatch/state';
 import { activateForClient } from '../src/activate.js';
 import { claudeCodeConfigPath, CLAUDE_CODE_CLIENT_ID } from '../src/claude-code-adapter.js';
+import { vscodeConfigPath, VSCODE_CLIENT_ID } from '../src/vscode-adapter.js';
 import { detectDriftForPair, detectAllDrift } from '../src/drift.js';
 
 function setupActivatedServer(projectRoot: string, dbPath: string, server_id: string, client_id = CLAUDE_CODE_CLIENT_ID) {
@@ -235,6 +236,38 @@ test('UNVERIFIABLE CASE: a pre-migration ownership row (no real snapshot) report
       strictEqual(result.entry.storedSnapshot, undefined, 'no real snapshot exists to report');
       ok(result.entry.liveValue, 'the real live value should still be reported for context');
     }
+  } finally {
+    db.close();
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
+test('detectDriftForPair: reads VS Code\'s "servers" key, not "mcpServers" - proves the per-client top-level key is actually threaded through', () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), 'scopewatch-drift-'));
+  const dbPath = join(projectRoot, 'state.db');
+  const db = setupActivatedServer(projectRoot, dbPath, 'vscode-server', VSCODE_CLIENT_ID);
+
+  try {
+    // Unchanged immediately after activation: proves detection is reading
+    // the "servers" key VS Code activation actually wrote to, not the
+    // "mcpServers" key other clients use (which would show this as
+    // 'missing', not 'unchanged', if the key were wrong).
+    const unchanged = detectDriftForPair(db, 'vscode-server', VSCODE_CLIENT_ID);
+    ok(unchanged.ok);
+    if (unchanged.ok) strictEqual(unchanged.entry.status, 'unchanged');
+
+    const configPath = vscodeConfigPath(projectRoot);
+    const config = JSON.parse(readFileSync(configPath, 'utf-8'));
+    ok(config.servers['vscode-server'], 'activation must have written under "servers"');
+    strictEqual(config.mcpServers, undefined);
+
+    // Hand-edit the real "servers" entry and confirm drift is detected there too.
+    config.servers['vscode-server'].args = ['vscode-server', 'vscode', '--tampered'];
+    writeFileSync(configPath, JSON.stringify(config));
+
+    const changed = detectDriftForPair(db, 'vscode-server', VSCODE_CLIENT_ID);
+    ok(changed.ok);
+    if (changed.ok) strictEqual(changed.entry.status, 'changed');
   } finally {
     db.close();
     rmSync(projectRoot, { recursive: true, force: true });

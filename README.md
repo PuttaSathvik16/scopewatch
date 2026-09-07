@@ -15,6 +15,7 @@ entire product. Everything else in this repository exists to support it.
 ## Table of contents
 
  -  [Why](#why)
+ -  [What makes it different](#what - makes - it - different)
  -  [What it does](#what - it - does)
  -  [What it doesn't do (v1)](#what - it - doesnt - do - v1)
  -  [How it works](#how - it - works)
@@ -40,6 +41,29 @@ the tool can *do* to your machine or your accounts.
 Scopewatch tracks capabilities at the resource level, across versions, and
 surfaces exactly what changed in plain language - so capability changes get
 approved deliberately, not discovered after the fact.
+
+## What makes it different
+
+Most package/tool installers - `npm`, `pip`, `brew`, and the like - answer
+one question on update: *did the version number change?* Scopewatch is
+built to answer a different, more consequential question: *did this tool's
+actual power over my machine or accounts change?* That's a fundamentally
+different job, and it shapes every design decision in this repository.
+
+| | Typical CLI installers (npm/pip/brew) | Scopewatch |
+| --- | --- | --- |
+| What you see on update | A version number, maybe a changelog | A structured diff of exactly what read/write/delete/execute access changed |
+| Trust basis | The publisher's own description | Inferred from the tool's real declared behavior (tool schema, name, self-reported hints) - not just what it claims |
+| When you approve | After install, or never (auto-update) | **Before** activation, every time, with no code path around it |
+| Secrets handling | Often plaintext env vars or config files | OS-native keychain only; redacted everywhere else, content-based not key-based |
+| Scope | General-purpose packages | Purpose-built for MCP/AI-agent tools specifically - the exact place a tool quietly gaining filesystem or network access is a live, present risk |
+
+The core uniqueness in one line: **Scopewatch is not a package manager with
+security bolted on - it's a security decision point that happens to also
+install things.** The diff-before-activation guarantee (`newly_destructive`
+gating, see [How it works](#how - it - works)) is non-negotiable in its
+design - there is no path by which a capability change reaches a live,
+running tool without a human seeing it first.
 
 ## What it does
 

@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/client-adapters",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Claude Code and Cursor client config adapters, ownership-tracked config writer, and the scopewatch-run wrapper",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -26,13 +26,14 @@
     "!dist/**/*.tsbuildinfo"
   ],
   "scripts": {
+    "prepublishOnly": "cd ../.. && npm run build",
     "build": "tsc && node -e \"try{require('fs').chmodSync('dist/bin/scopewatch-run.js',0o755)}catch(e){}\"",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@scopewatch/state": "0.0.1",
-    "@scopewatch/secrets": "0.0.1"
+    "@scopewatch/state": "0.0.2",
+    "@scopewatch/secrets": "0.0.2"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/install-adapters",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "npm/npx install adapter: prerequisite detection and categorized install diagnostics",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -22,6 +22,7 @@
     "dist"
   ],
   "scripts": {
+    "prepublishOnly": "cd ../.. && npm run build",
     "build": "tsc",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "clean": "rm -rf dist"

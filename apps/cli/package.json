@@ -2,6 +2,13 @@
   "name": "@scopewatch/cli",
   "version": "0.0.1",
   "description": "Scopewatch CLI: search, install, test, activate, update, diff, rollback, status",
+  "license": "MIT",
+  "author": "Sathvik Putta <puttasathvik16@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PuttaSathvik16/scopewatch.git",
+    "directory": "apps/cli"
+  },
   "type": "module",
   "bin": {
     "scopewatch": "./dist/main.js"
@@ -10,6 +17,7 @@
     "dist"
   ],
   "scripts": {
+    "prepublishOnly": "npm run build",
     "build": "tsc && node -e \"try{require('fs').chmodSync('dist/main.js',0o755)}catch(e){}\"",
     "test": "node --import tsx --test 'test/**/*.test.ts'",
     "clean": "rm -rf dist"

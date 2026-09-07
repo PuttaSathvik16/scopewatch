@@ -2,6 +2,13 @@
   "name": "@scopewatch/capability-inference",
   "version": "0.0.1",
   "description": "Heuristic capability inference from real MCP tools/list data, for servers without declared capability metadata",
+  "license": "MIT",
+  "author": "Sathvik Putta <puttasathvik16@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PuttaSathvik16/scopewatch.git",
+    "directory": "packages/capability-inference"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

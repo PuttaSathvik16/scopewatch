@@ -2,6 +2,13 @@
   "name": "@scopewatch/client-adapters",
   "version": "0.0.1",
   "description": "Claude Code and Cursor client config adapters, ownership-tracked config writer, and the scopewatch-run wrapper",
+  "license": "MIT",
+  "author": "Sathvik Putta <puttasathvik16@gmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PuttaSathvik16/scopewatch.git",
+    "directory": "packages/client-adapters"
+  },
   "type": "module",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",

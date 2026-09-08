@@ -12,14 +12,16 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # Both the stated floor (22.x, see packages/install-adapters
-        # MIN_NODE_VERSION) and the current Active LTS (24.x). Testing only
-        # 22.x let a real gap ship undetected: better-sqlite3's pinned
-        # version had no prebuilt binary for Node 24's ABI, breaking `npm
-        # install -g` on any real Node 24 machine (found via a user report,
-        # not CI) until better-sqlite3 was upgraded. This matrix dimension
-        # exists so that class of gap fails loudly here next time instead.
-        node: ['22.x', '24.x']
+        # The stated floor (22.x, see packages/install-adapters
+        # MIN_NODE_VERSION), the current Active LTS (24.x), and Current
+        # (26.x). Testing only 22.x let a real gap ship undetected:
+        # better-sqlite3's pinned version had no prebuilt binary for Node
+        # 24's ABI, breaking `npm install -g` on any real Node 24 machine
+        # (found via a user report, not CI) until better-sqlite3 was
+        # upgraded. This matrix dimension exists so that class of gap fails
+        # loudly here next time instead. 26.x verified locally (real Node
+        # 26.8.1 via Homebrew, full suite green) before adding it here.
+        node: ['22.x', '24.x', '26.x']
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

@@ -15,19 +15,19 @@ entire product. Everything else in this repository exists to support it.
 ## Table of contents
 
  -  [Why](#why)
- -  [What makes it different](#what - makes - it - different)
- -  [What it does](#what - it - does)
- -  [What it doesn't do (v1)](#what - it - doesnt - do - v1)
- -  [How it works](#how - it - works)
+ -  [What makes it different](#what-makes-it-different)
+ -  [What it does](#what-it-does)
+ -  [What it doesn't do (v1)](#what-it-doesnt-do-v1)
+ -  [How it works](#how-it-works)
  -  [Requirements](#requirements)
-   -  [Node.js version support](#nodejs - version - support)
+   -  [Node.js version support](#nodejs-version-support)
  -  [Quickstart](#quickstart)
- -  [Command reference](#command - reference)
- -  [Project structure](#project - structure)
+ -  [Command reference](#command-reference)
+ -  [Project structure](#project-structure)
  -  [Documentation](#documentation)
  -  [Development](#development)
  -  [Testing](#testing)
- -  [Security model, in short](#security - model - in - short)
+ -  [Security model, in short](#security-model-in-short)
  -  [License](#license)
 
 ## Why
@@ -62,7 +62,7 @@ different job, and it shapes every design decision in this repository.
 The core uniqueness in one line: **Scopewatch is not a package manager with
 security bolted on - it's a security decision point that happens to also
 install things.** The diff-before-activation guarantee (`newly_destructive`
-gating, see [How it works](#how - it - works)) is non-negotiable in its
+gating, see [How it works](#how-it-works)) is non-negotiable in its
 design - there is no path by which a capability change reaches a live,
 running tool without a human seeing it first.
 
@@ -111,7 +111,7 @@ These are stated, deliberate scope cuts for v1 - not oversights:
   Copilot** (agent mode)
  -  **Project scope only** for client config - Scopewatch never writes to
   global config shared across every project on your machine (see
-  [docs/supported - matrix.md](docs/supported - matrix.md))
+  [docs/supported - matrix.md](docs/supported-matrix.md))
 
 ## How it works
 
@@ -280,11 +280,11 @@ runnable product.
 ## Documentation
 
  -  [docs/quickstart.md](docs/quickstart.md) - full walkthrough
- -  [docs/security - model.md](docs/security - model.md) - secrets, keychain,
+ -  [docs/security - model.md](docs/security-model.md) - secrets, keychain,
   redaction, process isolation
- -  [docs/supported - matrix.md](docs/supported - matrix.md) - supported clients,
+ -  [docs/supported - matrix.md](docs/supported-matrix.md) - supported clients,
   install adapters, and known scope limits
- -  [docs/capability - inference - limits.md](docs/capability - inference - limits.md) -
+ -  [docs/capability - inference - limits.md](docs/capability-inference-limits.md) -
   how capability inference works and where it can be wrong
 
 ## Development
@@ -377,7 +377,7 @@ exhaustive audit, verified against real Windows CI. Full account in
   full shell environment during install - time testing - only `PATH` and
   platform - baseline variables, plus (only where applicable) that server's
   own already - stored secrets.
- -  Full details: [docs/security - model.md](docs/security - model.md).
+ -  Full details: [docs/security - model.md](docs/security-model.md).
 
 ## License
 

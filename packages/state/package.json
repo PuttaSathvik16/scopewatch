@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/state",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "SQLite state, lockfile, and lifecycle engine",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -29,10 +29,10 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "better-sqlite3": "11.10.0"
+    "better-sqlite3": "^13.0.3"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0",
     "tsx": "^4.19.0"

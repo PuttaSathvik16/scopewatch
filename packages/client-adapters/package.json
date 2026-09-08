@@ -1,6 +1,6 @@
 {
   "name": "@scopewatch/client-adapters",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Claude Code and Cursor client config adapters, ownership-tracked config writer, and the scopewatch-run wrapper",
   "license": "MIT",
   "author": "Sathvik Putta <puttasathvik16@gmail.com>",
@@ -32,7 +32,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@scopewatch/state": "0.0.2",
+    "@scopewatch/state": "0.0.3",
     "@scopewatch/secrets": "0.0.2"
   },
   "devDependencies": {

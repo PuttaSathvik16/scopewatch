@@ -6,6 +6,7 @@ import {
   insertDiff,
   getDiffObject,
   getCurrentManifestFor,
+  getManifestByVersion,
   type SqliteDatabase,
 } from '@scopewatch/state';
 import { computeDiff, renderDiff, extractSummary } from '@scopewatch/diff-engine';
@@ -98,6 +99,24 @@ export async function cmdInstall(serverName: string, client_id: string, deps: Cl
   const pkg = registryServer.packages?.[0];
   if (!pkg) {
     return { ok: false, stage: 'registry_fetch', error: new Error(`Server '${serverName}' has no installable npm package in the registry.`) };
+  }
+
+  // Fail fast, with a clear message, before spending time on prereqs/npm
+  // install/a real MCP handshake for a version already on record. Without
+  // this check, re-running install for the same server+version hit
+  // insertManifest's raw UNIQUE(server_id, version) constraint below,
+  // surfacing as an uncategorized "Unexpected error: UNIQUE constraint
+  // failed: manifests.server_id, manifests.version" - exactly the kind of
+  // unactionable error this project's own design principles rule out.
+  if (getManifestByVersion(db, registryServer.name, registryServer.version)) {
+    return {
+      ok: false,
+      stage: 'already_installed',
+      error: new Error(
+        `'${registryServer.name}' version ${registryServer.version} is already installed. ` +
+          `Run 'scopewatch status' to see its current state, or 'scopewatch update ${registryServer.name}' to check for a newer version.`
+      ),
+    };
   }
 
   const prereqs = checkPrerequisites(deps.prereqRunner ?? realCommandRunner);
@@ -197,8 +216,21 @@ export function cmdActivate(server_id: string, client_id: string, deps: CliDeps)
   const { db } = deps;
   const engine = new LifecycleEngine(db);
   const intentId = engine.startTransition(server_id, client_id, 'validated', 'active', null);
+  // Write-ahead-intent, matching LifecycleEngine's own design: the real,
+  // fallible side effect (a file write, which can hit permissions/disk
+  // errors) happens BETWEEN startTransition and confirmTransition, never
+  // before it. Confirming first would let lockfile_entries.state say
+  // 'active' even when the client config file was never actually written -
+  // found via a real EPERM (wrote to a protected directory) that left
+  // exactly that gap: `status` reported 'active' for a server no client
+  // config actually pointed at.
+  try {
+    activateForClient(db, server_id, client_id, deps.projectRoot ?? process.cwd());
+  } catch (err) {
+    engine.failTransition(intentId, err instanceof Error ? err : new Error(String(err)));
+    throw err;
+  }
   engine.confirmTransition(intentId);
-  activateForClient(db, server_id, client_id, deps.projectRoot ?? process.cwd());
   return { ok: true };
 }
 

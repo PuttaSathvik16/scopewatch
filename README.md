@@ -168,6 +168,22 @@ scopewatch update <server>
 Run `scopewatch doctor` any time to check whether your environment meets
 these requirements.
 
+### Node.js version support
+
+| Version | Status |
+| --- | --- |
+| < 22 | Not supported - below the stated floor |
+| **22** (Maintenance LTS) | Verified - CI passes on Linux, macOS, and Windows |
+| **24** (Active LTS) | Verified - CI passes on Linux, macOS, and Windows |
+| **26** (Current) | Untested - no known reason it wouldn't work, but not yet verified |
+
+CI (`.github/workflows/ci.yml`) runs the full suite across both 22.x and
+24.x on all three platforms on every push, specifically to catch the class
+of bug this project already hit twice: a native dependency
+(`better-sqlite3`) with a version gap between what a pinned release
+supports and what a newer Node actually ships. Testing only the floor
+version let both gaps ship undetected until a real user hit them.
+
 ## Quickstart
 
 Install globally from npm:

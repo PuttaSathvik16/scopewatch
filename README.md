@@ -20,6 +20,7 @@ entire product. Everything else in this repository exists to support it.
  -  [What it doesn't do (v1)](#what - it - doesnt - do - v1)
  -  [How it works](#how - it - works)
  -  [Requirements](#requirements)
+   -  [Node.js version support](#nodejs - version - support)
  -  [Quickstart](#quickstart)
  -  [Command reference](#command - reference)
  -  [Project structure](#project - structure)

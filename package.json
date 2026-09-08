@@ -17,13 +17,9 @@
     "prepare": "npm run build"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "zod": "^3.24.0"
-  },
-  "dependencies": {
-    "better-sqlite3": "^11.10.0"
   }
 }
